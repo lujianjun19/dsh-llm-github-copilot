@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.deploy-backups/
+.ai-refactor/
+*.tgz
+*.log
+.DS_Store
