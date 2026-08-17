@@ -2,7 +2,7 @@ name: Release
 
 # Push a vX.Y.Z tag to build, test, and publish to npm via Trusted Publishing (OIDC).
 # No NPM_TOKEN secret required — npm authenticates via GitHub Actions OIDC.
-# Configure the Trusted Publisher on npmjs.com first:
+# Trusted Publisher must be configured on npmjs.com first:
 #   https://www.npmjs.com/package/@lujianjun19/dsh-llm-github-copilot → Settings → Trusted publishing
 
 on:
@@ -27,10 +27,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Install step: no registry-url so setup-node does NOT inject _authToken
+      # into .npmrc (which would shadow OIDC auth on the publish step).
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org/
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
@@ -51,8 +53,17 @@ jobs:
           fi
           echo "✅ version $PKG_VERSION matches tag $GITHUB_REF_NAME"
 
-      - name: Publish to npm (Trusted Publishing — no token required)
-        run: npm publish --access public
+      # Publish step: point npm at the registry so OIDC exchange can reach it,
+      # but do NOT set NODE_AUTH_TOKEN — npm detects the GitHub OIDC environment
+      # automatically and exchanges the ID token for a short-lived publish token.
+      - name: Publish to npm (Trusted Publishing — no token)
+        run: |
+          npm config set registry https://registry.npmjs.org/
+          npm publish --access public
+        env:
+          # Explicitly empty so actions/setup-node's .npmrc template is not
+          # accidentally populated with a stale secret from the runner env.
+          NODE_AUTH_TOKEN: ""
 
       - name: Create GitHub Release
         env:
