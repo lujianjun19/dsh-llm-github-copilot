@@ -52,6 +52,16 @@ src/
 
 `lib/index.js` and `lib/client.js` are generated release artifacts. Modify `src/`, then build.
 
+## Development handoff
+
+The implementation specification for Copilot vision support and the separate document-reading tool is:
+
+```text
+docs/VISION_AND_DOCUMENT_HANDOFF.zh-CN.md
+```
+
+A coding model must read that document and `AGENTS.md` before implementing either capability.
+
 ## Commands
 
 ```bash

@@ -14,7 +14,7 @@ const stage = join(parent, `.dsh-llm-github-copilot.deploy-${process.pid}`)
 const backupRoot = join(dshHome, 'plugin-backups', 'dsh-llm-github-copilot')
 const stamp = new Date().toISOString().replaceAll(':', '').replaceAll('.', '-')
 const backup = join(backupRoot, `v${manifest.version}-${stamp}`)
-const releaseEntries = ['package.json', 'LICENSE', 'README.md', 'INSTALL.md', 'lib', 'vendor']
+const releaseEntries = ['package.json', 'LICENSE', 'README.md', 'INSTALL.md', 'AGENTS.md', 'CHANGELOG.md', 'docs', 'lib', 'vendor']
 
 const run = (command, args) => execFileSync(command, args, { cwd: root, stdio: 'inherit' })
 const exists = async path => stat(path).then(() => true, error => {

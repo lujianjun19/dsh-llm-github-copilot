@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The project follows Sem
 
 - Dynamic GitHub Copilot vision-model capability discovery and image serialization.
 
+## [0.2.1] - 2026-08-17
+
+### Added
+
+- Self-contained implementation handoff for Copilot vision support and the separate document-reading tool.
+- Release packaging and deployment of repository governance and design documents.
+
 ## [0.2.0] - 2026-08-17
 
 ### Added

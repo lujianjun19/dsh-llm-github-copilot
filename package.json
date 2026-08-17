@@ -21,6 +21,9 @@
     "LICENSE",
     "README.md",
     "INSTALL.md",
+    "AGENTS.md",
+    "CHANGELOG.md",
+    "docs/**",
     "lib/index.js",
     "lib/client.js",
     "vendor/undici/**"

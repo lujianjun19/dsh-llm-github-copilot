@@ -8,6 +8,16 @@
 - Browser source lives in ordered fragments under `src/client/`.
 - Keep each fragment below 450 lines; split by responsibility before it exceeds the limit.
 
+## Feature design authority
+
+Before implementing vision or document capabilities, read:
+
+```text
+docs/VISION_AND_DOCUMENT_HANDOFF.zh-CN.md
+```
+
+Do not expand that scope (especially generic composer file upload or DSH core changes) without explicit user approval.
+
 ## Required workflow
 
 Before editing:
