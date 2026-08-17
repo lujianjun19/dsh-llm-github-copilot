@@ -7,15 +7,16 @@
  * @module dsh-llm-github-copilot/responses
  */
 /** Serialize the conversation into Responses `input` items. */
-function serializeResponsesMessages(messages) {
+async function serializeResponsesMessages(messages, imageResolver) {
   const input = [];
   for (const message of messages) {
-    assertTextOnly(message.content);
     if (message.role === "system") {
+      assertTextOnly(message.content, "system");
       input.push({ role: "system", content: [{ type: "input_text", text: flattenText(message.content) }] });
       continue;
     }
     if (message.role === "assistant") {
+      assertTextOnly(message.content, "assistant");
       const text = flattenText(message.content);
       const toolCalls = message.content.filter((block) => block.type === "tool-call").map((block) => ({
         type: "output_tool_call",
@@ -33,8 +34,19 @@ function serializeResponsesMessages(messages) {
       continue;
     }
     const toolResults = message.content.filter((block) => block.type === "tool-result");
-    const text = flattenText(message.content);
-    if (text.length > 0 || toolResults.length === 0) input.push({ role: "user", content: [{ type: "input_text", text: text || "" }] });
+    // First version: reject images inside tool-result content.
+    for (const result of toolResults) {
+      if (contentHasImage(result.content)) {
+        throw new LlmError("GitHub Copilot adapter does not support image content in tool-result messages (first version).", "UNSUPPORTED_CONTENT");
+      }
+    }
+    const userBlocks = message.content.filter((block) => block.type !== "tool-result");
+    const text = flattenText(userBlocks);
+    const hasImages = userBlocks.some((b) => b.type === "image");
+    if (text.length > 0 || hasImages || toolResults.length === 0) {
+      const contentParts = await serializeResponsesUserContent(userBlocks, imageResolver);
+      input.push({ role: "user", content: contentParts });
+    }
     for (const result of toolResults) input.push({
       type: "function_call_output",
       call_id: result.toolCallId,
@@ -43,9 +55,30 @@ function serializeResponsesMessages(messages) {
   }
   return input;
 }
+/**
+ * Serialize one user content block list that may contain images for the
+ * Responses API. Pure-text content produces a single input_text item;
+ * mixed or image-only content produces an ordered array of input_text and
+ * input_image items preserving the original block order.
+ */
+async function serializeResponsesUserContent(blocks, imageResolver) {
+  const hasImage = blocks.some((b) => b.type === "image");
+  if (!hasImage) return [{ type: "input_text", text: flattenText(blocks) || "" }];
+  const parts = [];
+  for (const block of blocks) {
+    if (block.type === "text") {
+      if (block.text.length > 0) parts.push({ type: "input_text", text: block.text });
+    } else if (block.type === "image") {
+      const resolved = await imageResolver.resolve(block.attachment);
+      parts.push({ type: "input_image", image_url: resolved.dataUrl });
+    }
+    // Reasoning and unknown block types are silently skipped for user content.
+  }
+  return parts;
+}
 /** Build the full Responses wire request body. */
-function serializeResponsesRequest(options, wire) {
-  const input = serializeResponsesMessages(options.messages);
+async function serializeResponsesRequest(options, wire, imageResolver) {
+  const input = await serializeResponsesMessages(options.messages, imageResolver);
   if (options.system !== void 0) input.unshift({ role: "system", content: [{ type: "input_text", text: options.system }] });
   const tools = options.tools?.map((tool) => ({
     type: "function",

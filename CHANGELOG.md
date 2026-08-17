@@ -4,9 +4,27 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
-### Planned
+## [0.3.0] - 2026-08-17
 
-- Dynamic GitHub Copilot vision-model capability discovery and image serialization.
+### Added
+
+- **Vision model support (Workflow A)**: Dynamic discovery of GitHub Copilot models with `capabilities.supports.vision === true`.
+- `readModelsListing()` now parses vision limits (`max_prompt_image_size`, `max_prompt_images`, `supported_media_types`) from `/models` into a structured `vision` field per catalog entry.
+- Models with `supports.vision === true` are declared with `inputModalities: ['text', 'image']`; all others remain `['text']`. No name-based inference.
+- New `src/host/04-attachment-resolver.js`: `createImageResolver()` reads images from the DSH `AttachmentStore`, validates MIME type, byte size, and per-request unique image count against model-level limits, and produces Base64 data URIs for Provider wire payloads.
+- `serializeRequest()` (Chat Completions) is now async and supports `image_url` content parts for user messages; pure-text messages retain the string `content` shape for provider-cache compatibility.
+- `serializeResponsesRequest()` (Responses API) is now async and supports `input_image` items for user messages.
+- System, assistant, and tool-result positions reject image content with explicit `UNSUPPORTED_CONTENT` errors.
+- The adapter's `request()` method performs an image pre-flight check: model modality gate → attachment-service presence → per-resolver MIME/size/count validation.
+- `resolveAttachments: () => ctx.get('attachments')` added to the adapter config in `apply()`; the attachment service is resolved lazily only when a request contains images.
+- 47 new unit tests across `vision-catalog`, `vision-chat-serialize`, `vision-responses-serialize`, and `vision-adapter` test files.
+
+### Changed
+
+- `modelInfo()` now reads `model.inputModalities ?? ["text"]` instead of hardcoding `["text"]`.
+- `resolveModel()` fallback for unconfigured models still uses `["text"]`; dynamic models use the catalog-resolved modalities.
+- `serializeMessages()` and `serializeResponsesMessages()` are now async.
+- Additional exports for internal testing: `readModelsListing`, `createImageResolver`, `serializeRequest`, `serializeResponsesRequest`.
 
 ## [0.2.1] - 2026-08-17
 

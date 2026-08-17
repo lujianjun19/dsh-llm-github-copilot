@@ -41,6 +41,27 @@ function readModelsListing(body) {
       ...Number.isFinite(minBudget) ? { min: minBudget } : {},
       ...Number.isFinite(maxBudget) ? { max: maxBudget } : {}
     };
+    // Vision capability: only declare image modality when the endpoint explicitly
+    // reports supports.vision === true. Never infer from model name or family.
+    if (supports?.vision === true) {
+      entry.inputModalities = ["text", "image"];
+      const vl = limits?.vision;
+      if (vl !== null && typeof vl === "object") {
+        const vision = {};
+        const rawBytes = vl.max_prompt_image_size;
+        if (typeof rawBytes === "number" && Number.isInteger(rawBytes) && rawBytes > 0) vision.maxImageBytes = rawBytes;
+        const rawImages = vl.max_prompt_images;
+        if (typeof rawImages === "number" && Number.isInteger(rawImages) && rawImages > 0) vision.maxImages = rawImages;
+        const rawTypes = vl.supported_media_types;
+        if (Array.isArray(rawTypes)) {
+          const types = [...new Set(rawTypes.filter((t) => typeof t === "string" && t.length > 0))];
+          if (types.length > 0) vision.mediaTypes = types;
+        }
+        if (Object.keys(vision).length > 0) entry.vision = vision;
+      }
+    } else {
+      entry.inputModalities = ["text"];
+    }
     models.push(entry);
   }
   return models.length > 0 ? models : void 0;

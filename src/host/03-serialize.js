@@ -3,9 +3,30 @@
 function flattenText(blocks) {
   return blocks.filter((block) => block.type === "text").map((block) => block.text).join("");
 }
-/** Reject core image content before any text-flattening path can silently erase it. */
-function assertTextOnly(blocks) {
-  if (contentHasImage(blocks)) throw new LlmError("The GitHub Copilot chat-completions adapter does not support image content.", "UNSUPPORTED_CONTENT");
+/** Reject image content in positions that do not support it (system/assistant/tool-result). */
+function assertTextOnly(blocks, position) {
+  if (contentHasImage(blocks)) throw new LlmError(`GitHub Copilot adapter does not support image content in ${position} messages.`, "UNSUPPORTED_CONTENT");
+}
+/**
+ * Serialize one user content block list that may contain images.
+ * Pure-text content is returned as a plain string (preserving provider-cache
+ * compatibility). Mixed or image-only content is returned as a content-part
+ * array in OpenAI image_url format, preserving original block order.
+ */
+async function serializeChatUserContent(blocks, imageResolver) {
+  const hasImage = blocks.some((b) => b.type === "image");
+  if (!hasImage) return flattenText(blocks);
+  const parts = [];
+  for (const block of blocks) {
+    if (block.type === "text") {
+      if (block.text.length > 0) parts.push({ type: "text", text: block.text });
+    } else if (block.type === "image") {
+      const resolved = await imageResolver.resolve(block.attachment);
+      parts.push({ type: "image_url", image_url: { url: resolved.dataUrl } });
+    }
+    // Reasoning and unknown block types are silently skipped for user content.
+  }
+  return parts;
 }
 /** Serialize one assistant message (text + reasoning + tool calls). */
 function serializeAssistant(message) {
@@ -27,21 +48,34 @@ function serializeAssistant(message) {
   };
 }
 /** Serialize the conversation into OpenAI-compatible wire messages. */
-function serializeMessages(messages) {
+async function serializeMessages(messages, imageResolver) {
   const wire = [];
   for (const message of messages) {
-    assertTextOnly(message.content);
     if (message.role === "system") {
+      assertTextOnly(message.content, "system");
       wire.push({ role: "system", content: flattenText(message.content) });
       continue;
     }
     if (message.role === "assistant") {
+      assertTextOnly(message.content, "assistant");
       wire.push(serializeAssistant(message));
       continue;
     }
+    // User messages: separate tool-result blocks from regular content.
     const toolResults = message.content.filter((block) => block.type === "tool-result");
-    const text = flattenText(message.content);
-    if (text.length > 0 || toolResults.length === 0) wire.push({ role: "user", content: text });
+    // First version: reject images inside tool-result content.
+    for (const result of toolResults) {
+      if (contentHasImage(result.content)) {
+        throw new LlmError("GitHub Copilot adapter does not support image content in tool-result messages (first version).", "UNSUPPORTED_CONTENT");
+      }
+    }
+    const userBlocks = message.content.filter((block) => block.type !== "tool-result");
+    const text = flattenText(userBlocks);
+    const hasImages = userBlocks.some((b) => b.type === "image");
+    if (text.length > 0 || hasImages || toolResults.length === 0) {
+      const content = await serializeChatUserContent(userBlocks, imageResolver);
+      wire.push({ role: "user", content });
+    }
     for (const result of toolResults) wire.push({
       role: "tool",
       tool_call_id: result.toolCallId,
@@ -51,10 +85,10 @@ function serializeMessages(messages) {
   return wire;
 }
 /** Build the full wire request body (always streaming, usage reporting on). */
-function serializeRequest(options, wire) {
+async function serializeRequest(options, wire, imageResolver) {
   const messages = [];
   if (options.system !== void 0) messages.push({ role: "system", content: options.system });
-  messages.push(...serializeMessages(options.messages));
+  messages.push(...await serializeMessages(options.messages, imageResolver));
   const tools = options.tools?.map((tool) => ({
     type: "function",
     function: {

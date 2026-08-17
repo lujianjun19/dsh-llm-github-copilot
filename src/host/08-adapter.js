@@ -43,7 +43,7 @@ function modelInfo(provider, model) {
     id: model.id,
     name: model.name ?? model.id,
     ...model.description === void 0 ? {} : { description: model.description },
-    inputModalities: ["text"],
+    inputModalities: model.inputModalities ?? ["text"],
     ...reasoning === void 0 ? {} : { reasoning }
   };
 }
@@ -116,7 +116,28 @@ var GitHubCopilotAdapter = class extends LlmAdapter {
     const endpoints = entry?.endpoints;
     const useResponses = Array.isArray(endpoints) && !endpoints.includes("/chat/completions") && endpoints.includes("/responses");
     const wire = wireReasoning(entry, options.reasoningEffort);
-    const body = useResponses ? serializeResponsesRequest(options, wire) : serializeRequest(options, wire);
+    // Image pre-flight: gate model capability and attachment-service presence
+    // before doing any I/O. Text-only requests skip this entirely.
+    const containsImage = options.messages.some((m) => contentHasImage(m.content));
+    let attachmentStore;
+    if (containsImage) {
+      const modalities = entry?.inputModalities ?? ["text"];
+      if (!modalities.includes("image")) {
+        throw new LlmError(
+          `GitHub Copilot model "${options.model}" does not support image input.`,
+          "UNSUPPORTED_CONTENT"
+        );
+      }
+      attachmentStore = this.config.resolveAttachments();
+      if (attachmentStore == null) {
+        throw new LlmError(
+          "GitHub Copilot image input requires the durable attachment service",
+          "UNSUPPORTED_CONTENT"
+        );
+      }
+    }
+    const imageResolver = createImageResolver(attachmentStore, entry, signal);
+    const body = useResponses ? await serializeResponsesRequest(options, wire, imageResolver) : await serializeRequest(options, wire, imageResolver);
     const payload = JSON.stringify(body);
     const path = useResponses ? "/responses" : "/chat/completions";
     const headers = {
