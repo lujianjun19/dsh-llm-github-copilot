@@ -891,32 +891,33 @@ XLSX 最大 Sheet：20
 
 ## 22. 推荐实施顺序
 
-### PR/Commit 1：视觉 catalog
+### ✅ PR/Commit 1：视觉 catalog（已完成 v0.3.0）
 
 - 解析 `supports.vision` 和 limits；
 - `modelInfo/resolveModel` modalities；
-- catalog 单元测试。
+- catalog 单元测试（12 项）。
 
-### PR/Commit 2：AttachmentResolver
+### ✅ PR/Commit 2：AttachmentResolver（已完成 v0.3.0）
 
 - 动态 attachment service；
-- request cache；
+- request cache（按 attachmentId 去重）；
 - MIME/size/count 校验；
-- 单元测试。
+- 单元测试（15 项）。
 
-### PR/Commit 3：Chat Completions 图片
+### ✅ PR/Commit 3：Chat Completions 图片（已完成 v0.3.0）
 
 - async serializer；
-- user image content；
-- 纯文本兼容测试。
+- user image content（image_url 数组，纯文本保持 string 兼容）；
+- 拒绝 system/assistant/tool-result 图片；
+- 单元测试（11 项）。
 
-### PR/Commit 4：Responses 图片
+### ✅ PR/Commit 4：Responses 图片（已完成 v0.3.0）
 
 - `input_image`；
-- Responses-only model 测试；
+- Responses-only model 测试（9 项）；
 - 保持现有 stream translator 不变。
 
-### PR/Commit 5：DSH 集成和浏览器测试
+### ⬜ PR/Commit 5：DSH 集成和浏览器测试（待手动验证）
 
 - paste/drop；
 - rail；
@@ -924,13 +925,13 @@ XLSX 最大 Sheet：20
 - history reload；
 - model switch refusal。
 
-### PR/Commit 6：真实 Copilot smoke
+### ⬜ PR/Commit 6：真实 Copilot smoke（需要真实账号）
 
 - chat visual model；
 - responses visual model；
 - 小图片文字识别。
 
-### 独立项目：文档工具
+### 🔄 独立项目：文档工具（进行中，见 /home/ljjun/repos/dsh-tool-document）
 
 视觉功能稳定后再创建 `dsh-tool-document`，不要和 adapter 改动混在一个提交中。
 
