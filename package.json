@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-llm-github-copilot",
   "description": "GitHub Copilot adapter for the DeepSeek Harness LLM seam: OAuth device-flow sign-in, Copilot token exchange, and OpenAI-compatible chat completions against api.githubcopilot.com",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publishConfig": {
     "access": "public"
   },
