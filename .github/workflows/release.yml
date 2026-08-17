@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write   # required for --provenance OIDC attestation
 
 concurrency:
   group: release-${{ github.ref }}
@@ -54,7 +55,7 @@ jobs:
           echo "✅ version $PKG_VERSION matches tag $GITHUB_REF_NAME"
 
       - name: Publish to npm
-        run: npm publish --access public
+        run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
