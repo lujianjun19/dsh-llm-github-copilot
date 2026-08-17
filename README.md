@@ -1,123 +1,121 @@
 # dsh-llm-github-copilot
 
-GitHub Copilot LLM adapter and Web settings integration for DeepSeek Harness.
+English | [中文](README.zh.md)
 
-## Repository role
+GitHub Copilot LLM adapter for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
-This Git repository is the **source of truth**. Do not edit the installed copy under
-`~/.dsh/profiles/web/node_modules` directly.
+Sign in with your GitHub account and use every Copilot model — including GPT-4.1, Claude Sonnet, Gemini, and GPT-5 family — directly inside DeepSeek Harness. Vision-capable models accept pasted or dragged images in the chat composer.
 
-- Repository: `/home/ljjun/repos/dsh-llm-github-copilot`
-- Deployment target: `~/.dsh/profiles/web/node_modules/@deepseek-ai/dsh-llm-github-copilot`
-- Local packages: `dist/*.tgz`
-- Deployment backups: `~/.dsh/plugin-backups/dsh-llm-github-copilot/`
+## Install from GitHub
 
-## Source layout
-
-The released Host and Client files share lexical state, so the source is maintained as
-ordered, small fragments and concatenated deterministically. This preserves the reviewed
-runtime while avoiding one 1,800-line editing surface.
-
-```text
-src/
-├── host/
-│   ├── 00-imports.js
-│   ├── 01-constants.js
-│   ├── 02-schema.js
-│   ├── 03-serialize.js
-│   ├── 04-sse-translate.js
-│   ├── 05-responses-api.js
-│   ├── 06-token-exchange.js
-│   ├── 07-transport.js
-│   ├── 08-adapter.js
-│   ├── 09-model-discovery.js
-│   ├── 10-config-resolution.js
-│   ├── 11-device-flow.js
-│   ├── 12-apply.js
-│   └── 99-exports.js
-└── client/
-    ├── 00-wrapper-start.js
-    ├── 01-i18n.js
-    ├── 02-locale.js
-    ├── 03-styles-api.js
-    ├── 04-stores.js
-    ├── 05-common-components.js
-    ├── 06-login-dialog.js
-    ├── 07-settings-page.js
-    ├── 08-login-command.js
-    ├── 09-settings-nav-icon.js
-    ├── 10-apply.js
-    └── 99-wrapper-end.js
+```sh
+dsh plugin --profile web add github:lujianjun19/dsh-llm-github-copilot
 ```
 
-`lib/index.js` and `lib/client.js` are generated release artifacts. Modify `src/`, then build.
+pnpm 10 and newer block git dependency build scripts by default. If installation asks you to approve the package build, add the exact package key it reports to the profile's `pnpm-workspace.yaml`:
 
-## Development handoff
-
-The implementation specification for Copilot vision support and the separate document-reading tool is:
-
-```text
-docs/VISION_AND_DOCUMENT_HANDOFF.zh-CN.md
+```yaml
+allowBuilds:
+  dsh-llm-github-copilot: true
 ```
 
-A coding model must read that document and `AGENTS.md` before implementing either capability.
+Then repeat the install command.
 
-## Commands
+After installation, register the plugin in the profile's `cordis.patch.yml`:
 
-```bash
-npm run build       # concatenate fragments and syntax-check artifacts
-npm test            # deterministic build, metadata, i18n, and packaging tests
-npm run check       # build + tests + npm package dry-run
-npm run deploy      # test, build, atomically deploy, retain a rollback backup
-npm run pack:local  # create dist/deepseek-ai-dsh-llm-github-copilot-*.tgz
+```yaml
+- insert:
+    - id: llm-github-copilot
+      name: '@deepseek-ai/dsh-llm-github-copilot'
 ```
 
-After Host changes, restart DSH:
+Restart DSH to activate:
 
-```bash
-# Stop the existing process, then:
+```sh
 dsh web
 ```
 
-After Client-only changes, HMR may reload the bundle, but a hard refresh is still recommended:
+## Sign in
 
-```text
-Ctrl+Shift+R
+Run the login command inside the Harness chat:
+
+```
+/copilot-login
 ```
 
-## Development workflow
+Follow the instructions — open the verification URL in your browser, enter the displayed code, and authorize the GitHub App. The token is stored automatically once you complete authorization. Run `/copilot-status` to confirm the connection and see the available models.
 
-1. Work only in this repository.
-2. Inspect `git status --short` before editing.
-3. Change the smallest relevant fragments in `src/`.
-4. Run `npm run check`.
-5. Review `git diff`.
-6. Commit the source and generated `lib/` artifacts together.
-7. Bump SemVer for a release (`npm version patch|minor|major`).
-8. Run `npm run deploy`.
-9. Restart DSH for Host changes and complete the browser smoke test.
+To sign out:
 
-## Versioning
+```
+/copilot-logout
+```
 
-Semantic Versioning is used:
+You can also set the token directly as an environment variable (useful for CI or headless setups):
 
-- **patch**: bug fixes, UI copy/style corrections, no new public capability;
-- **minor**: new OAuth, model, vision, or document capability;
-- **major**: incompatible configuration, credential, provider route, or wire changes.
+```sh
+export GITHUB_COPILOT_OAUTH_TOKEN=<your-github-oauth-token>
+```
 
-`npm version` runs tests before tagging and rebuilds the release artifacts. Update
-`CHANGELOG.md` before invoking it.
+## Features
+
+**Model discovery** — available models are fetched live from `https://api.githubcopilot.com/models` on each login and cached for 5 minutes. No static list to maintain.
+
+**Vision support** — models that declare `supports.vision: true` (e.g. `gpt-4.1`, `gpt-4o`) accept images. Paste or drag a PNG/JPEG/WebP/GIF into the chat composer; the image is attached, persisted, and visible in history after reload.
+
+**Two wire protocols** — the adapter speaks both OpenAI Chat Completions (`/chat/completions`) and the newer Responses API (`/responses`). The correct endpoint is chosen automatically per model.
+
+**Reasoning control** — effort levels (`low / medium / high / max`) are forwarded to models that declare them (`gpt-5.x`, Claude thinking budget, Gemini reasoning).
+
+**Automatic token refresh** — the short-lived Copilot API token is renewed transparently before it expires; no action required.
+
+**Settings page** — the plugin adds a dedicated GitHub Copilot section to the Harness Web settings UI with sign-in status, model count, and sign-out button.
+
+## Configure
+
+The plugin works with no configuration. To override defaults, edit the profile's `cordis.patch.yml`:
+
+```yaml
+- id: llm-github-copilot
+  config:
+    oauthTokenEnv: GITHUB_COPILOT_OAUTH_TOKEN   # env var that holds the GitHub OAuth token
+    baseURL: https://api.githubcopilot.com       # override Copilot API host
+    defaultContextWindow: 262144
+    defaultMaxTokens: 32768
+    streamIdleTimeoutMs: 300000
+    models: []   # optional static fallback catalog; leave empty to use live discovery
+```
+
+## Develop
+
+Requires Node.js ≥ 24 and npm.
+
+```sh
+cd /path/to/dsh-llm-github-copilot
+npm run build      # concatenate source fragments → lib/index.js and lib/client.js
+npm test           # build + deterministic artifact, i18n, and metadata tests
+npm run check      # build + tests + npm pack dry-run
+npm run deploy     # test → build → atomic deploy with rollback backup
+```
+
+Install the checkout into a local profile directly:
+
+```sh
+dsh plugin --profile web add .
+```
+
+After Host changes restart DSH; after Client-only changes a hard refresh (`Ctrl+Shift+R`) is usually enough.
 
 ## Rollback
 
-`npm run deploy` moves the currently installed package into a timestamped backup before
-installing the new build. To roll back, stop DSH and replace the target directory with the
-wanted backup from:
+`npm run deploy` keeps a timestamped backup before each install. To roll back, stop DSH and restore the wanted backup:
 
-```text
-~/.dsh/plugin-backups/dsh-llm-github-copilot/
+```sh
+cp -r ~/.dsh/plugin-backups/dsh-llm-github-copilot/<timestamp> \
+      ~/.dsh/profiles/web/node_modules/@deepseek-ai/dsh-llm-github-copilot
+dsh web
 ```
 
 ## License
 
-MIT
+[MIT](LICENSE)
