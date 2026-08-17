@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-17
+
+### Changed
+
+- Switch to npm Trusted Publishing (OIDC) — no long-lived token required for CI/CD publish.
+- Fix repository.url format in package.json to match GitHub URL exactly.
+- Add package-lock.json for reproducible CI installs.
+
 ## [0.3.0] - 2026-08-17
 
 ### Added
