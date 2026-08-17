@@ -53,17 +53,16 @@ jobs:
           fi
           echo "✅ version $PKG_VERSION matches tag $GITHUB_REF_NAME"
 
-      # Publish step: point npm at the registry so OIDC exchange can reach it,
-      # but do NOT set NODE_AUTH_TOKEN — npm detects the GitHub OIDC environment
-      # automatically and exchanges the ID token for a short-lived publish token.
+      # Publish step: wipe any .npmrc injected by setup-node (which contains
+      # always-auth=true and an empty _authToken placeholder that prevent the
+      # npm CLI from falling through to OIDC token exchange). Write a minimal
+      # registry-only config and let npm detect the GitHub OIDC environment
+      # automatically via ACTIONS_ID_TOKEN_REQUEST_URL.
       - name: Publish to npm (Trusted Publishing — no token)
         run: |
-          npm config set registry https://registry.npmjs.org/
+          rm -f ~/.npmrc
+          echo 'registry=https://registry.npmjs.org/' > ~/.npmrc
           npm publish --access public
-        env:
-          # Explicitly empty so actions/setup-node's .npmrc template is not
-          # accidentally populated with a stale secret from the runner env.
-          NODE_AUTH_TOKEN: ""
 
       - name: Create GitHub Release
         env:
