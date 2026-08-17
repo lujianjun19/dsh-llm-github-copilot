@@ -931,9 +931,9 @@ XLSX 最大 Sheet：20
 - responses visual model；
 - 小图片文字识别。
 
-### 🔄 独立项目：文档工具（进行中，见 /home/ljjun/repos/dsh-tool-document）
+### ✅ 独立项目：文档工具（已完成 v0.1.0，见 /home/ljjun/repos/dsh-tool-document）
 
-视觉功能稳定后再创建 `dsh-tool-document`，不要和 adapter 改动混在一个提交中。
+已完成并提交，不要和 adapter 改动混在一个提交中。
 
 ---
 
