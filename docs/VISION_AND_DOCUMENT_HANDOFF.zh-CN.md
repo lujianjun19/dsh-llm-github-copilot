@@ -4,7 +4,7 @@
 
 ## 0. 仓库与强制规则
 
-- 源码仓库：`/home/ljjun/repos/dsh-llm-github-copilot`
+- 源码仓库：本仓库根目录
 - DSH 安装目标：`~/.dsh/profiles/web/node_modules/@deepseek-ai/dsh-llm-github-copilot`
 - 当前基线：`v0.2.0`
 - 当前 DSH API 目标：`@deepseek-ai/dsh` `0.1.0-rc.6`
@@ -17,7 +17,7 @@
 每次开发的固定流程：
 
 ```bash
-cd /home/ljjun/repos/dsh-llm-github-copilot
+cd <本仓库根目录>
 git status --short
 # 修改 src/ 和 tests/
 npm run build
@@ -644,7 +644,7 @@ type PromptContentPart =
 建议创建独立仓库：
 
 ```text
-/home/ljjun/repos/dsh-tool-document
+dsh-tool-document
 ```
 
 建议 package：
@@ -931,7 +931,7 @@ XLSX 最大 Sheet：20
 - responses visual model；
 - 小图片文字识别。
 
-### ✅ 独立项目：文档工具（已完成 v0.1.0，见 /home/ljjun/repos/dsh-tool-document）
+### ✅ 独立项目：文档工具（已完成 v0.1.0，见 `dsh-tool-document` 仓库）
 
 已完成并提交，不要和 adapter 改动混在一个提交中。
 

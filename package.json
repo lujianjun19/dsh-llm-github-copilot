@@ -21,6 +21,7 @@
     "LICENSE",
     "README.md",
     "INSTALL.md",
+    "INSTALL.zh.md",
     "AGENTS.md",
     "CHANGELOG.md",
     "docs/**",
@@ -67,7 +68,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "file:///home/ljjun/repos/dsh-llm-github-copilot"
+    "url": "https://github.com/lujianjun19/dsh-llm-github-copilot"
   },
   "engines": {
     "node": ">=24"

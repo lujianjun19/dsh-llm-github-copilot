@@ -2,7 +2,7 @@
 
 ## Source of truth
 
-- Work only in `/home/ljjun/repos/dsh-llm-github-copilot`.
+- Work only in this repository's root directory.
 - Never edit `lib/index.js`, `lib/client.js`, or the installed package under `~/.dsh/profiles` directly.
 - Host source lives in ordered fragments under `src/host/`.
 - Browser source lives in ordered fragments under `src/client/`.
