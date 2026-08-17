@@ -69,7 +69,7 @@ export GITHUB_COPILOT_OAUTH_TOKEN=<your-github-oauth-token>
 
 **自动刷新 token** — 短期有效的 Copilot API token 在过期前自动续期，无需手动操作。
 
-**设置页面** — 插件在 Harness Web 设置界面新增 GitHub Copilot 专属页面，显示登录状态、模型数量，并提供退出按钮。
+**设置页面** — 插件在 Harness Web 设置界面新增 **GitHub Copilot** 专属页面（在浏览器中打开 DSH → 点击齿轮图标 → **GitHub Copilot**）。在该页面可以登录、查看认证状态和可用模型列表、退出登录，无需在对话框输入命令。
 
 ## 配置
 

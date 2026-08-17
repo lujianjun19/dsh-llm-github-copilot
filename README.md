@@ -69,7 +69,7 @@ export GITHUB_COPILOT_OAUTH_TOKEN=<your-github-oauth-token>
 
 **Automatic token refresh** — the short-lived Copilot API token is renewed transparently before it expires; no action required.
 
-**Settings page** — the plugin adds a dedicated GitHub Copilot section to the Harness Web settings UI with sign-in status, model count, and sign-out button.
+**Settings page** — the plugin adds a dedicated **GitHub Copilot** section to the Harness Web settings UI (open DSH in your browser → click the gear icon → **GitHub Copilot**). From there you can sign in, view authentication status and the available model list, and sign out — no slash commands required.
 
 ## Configure
 
