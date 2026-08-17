@@ -44,7 +44,7 @@ test('English and Chinese dictionaries have matching keys', async () => {
 
 test('manifest exposes both Host and Web client release faces', async () => {
   const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-  assert.equal(manifest.name, '@deepseek-ai/dsh-llm-github-copilot')
+  assert.equal(manifest.name, '@lujianjun19/dsh-llm-github-copilot')
   assert.match(manifest.version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/)
   assert.equal(manifest.exports['.'].default, './lib/index.js')
   assert.equal(manifest.exports['./client'].default, './lib/client.js')

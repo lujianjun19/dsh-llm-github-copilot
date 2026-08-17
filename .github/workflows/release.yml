@@ -1,0 +1,74 @@
+name: Release
+
+# Push a vX.Y.Z tag to build, test, publish to npm, and create a GitHub Release.
+#
+# Required repository secret:
+#   NPM_TOKEN — npm automation token for the @lujianjun19 scope.
+#   Create at https://www.npmjs.com/settings/<user>/tokens (type: Automation).
+#   Add at https://github.com/lujianjun19/dsh-llm-github-copilot/settings/secrets/actions
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build, test, publish, release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org/
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Verify package version matches tag
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ package.json version ($PKG_VERSION) does not match tag ($TAG_VERSION)"
+            exit 1
+          fi
+          echo "✅ version $PKG_VERSION matches tag $GITHUB_REF_NAME"
+
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "dsh-llm-github-copilot $GITHUB_REF_NAME" \
+            --notes "Published to npm as \`@lujianjun19/dsh-llm-github-copilot@${GITHUB_REF_NAME#v}\`
+
+          **Install:**
+          \`\`\`sh
+          dsh plugin --profile web add @lujianjun19/dsh-llm-github-copilot
+          \`\`\`
+
+          See [CHANGELOG.md](https://github.com/lujianjun19/dsh-llm-github-copilot/blob/main/CHANGELOG.md) for details."

@@ -33,7 +33,7 @@ OAuth **设备码登录**（浏览器 + 口令）拿到 token，自动交换成 
 ```bash
 mkdir -p "$DSH_HOME/profiles/web/node_modules/@deepseek-ai"
 cp -r ./dsh-llm-github-copilot \
-      "$DSH_HOME/profiles/web/node_modules/@deepseek-ai/dsh-llm-github-copilot"
+      "$DSH_HOME/profiles/web/node_modules/@lujianjun19/dsh-llm-github-copilot"
 ```
 
 > 必须用「真实目录拷贝」，不要用软链接（`ln -s`）。Node 会跟随软链接到原始位置去解析
@@ -60,7 +60,7 @@ dsh plugin --profile web add "/绝对路径/dsh-llm-github-copilot-0.1.0.tgz"
 ```yaml
 - insert:
     - id: llm-github-copilot
-      name: '@deepseek-ai/dsh-llm-github-copilot'
+      name: '@lujianjun19/dsh-llm-github-copilot'
 ```
 
 若文件当前是空数组 `[]`，整体改为：
@@ -68,7 +68,7 @@ dsh plugin --profile web add "/绝对路径/dsh-llm-github-copilot-0.1.0.tgz"
 ```yaml
 - insert:
     - id: llm-github-copilot
-      name: '@deepseek-ai/dsh-llm-github-copilot'
+      name: '@lujianjun19/dsh-llm-github-copilot'
 ```
 
 ---

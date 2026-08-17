@@ -1,9 +1,10 @@
 {
-  "name": "@deepseek-ai/dsh-llm-github-copilot",
+  "name": "@lujianjun19/dsh-llm-github-copilot",
   "description": "GitHub Copilot adapter for the DeepSeek Harness LLM seam: OAuth device-flow sign-in, Copilot token exchange, and OpenAI-compatible chat completions against api.githubcopilot.com",
   "version": "0.3.0",
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "license": "MIT",
   "type": "module",
@@ -30,7 +31,9 @@
     "vendor/undici/**"
   ],
   "dsh": {
-    "bundle": { "patch": "./cordis.patch.yml" },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "inject": [
         "@deepseek-ai/dsh-client-runtime",

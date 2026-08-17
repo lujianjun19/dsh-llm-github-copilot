@@ -6,7 +6,15 @@ GitHub Copilot LLM 适配器，适用于 [DeepSeek Harness](https://github.com/d
 
 使用 GitHub 账号登录后，可直接在 DeepSeek Harness 中调用所有 Copilot 模型，包括 GPT-4.1、Claude Sonnet、Gemini 和 GPT-5 系列。支持视觉能力的模型还可以在对话框中粘贴或拖拽图片。
 
-## 从 GitHub 安装
+## 安装
+
+### 从 npm 安装（推荐）
+
+```sh
+dsh plugin --profile web add @lujianjun19/dsh-llm-github-copilot
+```
+
+### 从 GitHub 安装
 
 ```sh
 dsh plugin --profile web add github:lujianjun19/dsh-llm-github-copilot
@@ -26,7 +34,7 @@ allowBuilds:
 ```yaml
 - insert:
     - id: llm-github-copilot
-      name: '@deepseek-ai/dsh-llm-github-copilot'
+      name: '@lujianjun19/dsh-llm-github-copilot'
 ```
 
 重启 DSH 使插件生效：
@@ -112,7 +120,7 @@ dsh plugin --profile web add .
 
 ```sh
 cp -r ~/.dsh/plugin-backups/dsh-llm-github-copilot/<时间戳> \
-      ~/.dsh/profiles/web/node_modules/@deepseek-ai/dsh-llm-github-copilot
+      ~/.dsh/profiles/web/node_modules/@lujianjun19/dsh-llm-github-copilot
 dsh web
 ```
 

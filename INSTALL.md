@@ -36,7 +36,7 @@ Then repeat the install command.
 ```bash
 mkdir -p ~/.dsh/profiles/web/node_modules/@deepseek-ai
 cp -r ./dsh-llm-github-copilot \
-      ~/.dsh/profiles/web/node_modules/@deepseek-ai/dsh-llm-github-copilot
+      ~/.dsh/profiles/web/node_modules/@lujianjun19/dsh-llm-github-copilot
 ```
 
 > Use a real directory copy, not a symlink. Node resolves peer dependencies by walking parent directories; a symlink would redirect resolution to the original source location where DSH's own packages are not present.
@@ -56,7 +56,7 @@ Edit `~/.dsh/profiles/web/cordis.patch.yml` and add:
 ```yaml
 - insert:
     - id: llm-github-copilot
-      name: '@deepseek-ai/dsh-llm-github-copilot'
+      name: '@lujianjun19/dsh-llm-github-copilot'
 ```
 
 If the file currently contains an empty array `[]`, replace the whole file with the block above.
@@ -174,7 +174,7 @@ Your egress IP is restricted. Export `HTTPS_PROXY` pointing to a proxy that exit
 Transient network issue during device-code polling. Run `/copilot-login` again to get a fresh code (the old one is invalidated automatically).
 
 **`configurable provider "github-copilot" is already declared`**
-An older version of this plugin used the route name `github-copilot`, which conflicts with a DSH built-in. This version uses `github-copilot-official`. Verify that your `cordis.patch.yml` uses `id: llm-github-copilot` and `name: '@deepseek-ai/dsh-llm-github-copilot'`.
+An older version of this plugin used the route name `github-copilot`, which conflicts with a DSH built-in. This version uses `github-copilot-official`. Verify that your `cordis.patch.yml` uses `id: llm-github-copilot` and `name: '@lujianjun19/dsh-llm-github-copilot'`.
 
 **Token expired**
 No action needed. The plugin stores the long-lived GitHub OAuth token and refreshes the short-lived Copilot API token automatically before it expires. Only an explicit sign-out or token revocation requires a new `/copilot-login`.

@@ -6,7 +6,15 @@ GitHub Copilot LLM adapter for [DeepSeek Harness](https://github.com/deepseek-ai
 
 Sign in with your GitHub account and use every Copilot model — including GPT-4.1, Claude Sonnet, Gemini, and GPT-5 family — directly inside DeepSeek Harness. Vision-capable models accept pasted or dragged images in the chat composer.
 
-## Install from GitHub
+## Install
+
+### From npm (recommended)
+
+```sh
+dsh plugin --profile web add @lujianjun19/dsh-llm-github-copilot
+```
+
+### From GitHub
 
 ```sh
 dsh plugin --profile web add github:lujianjun19/dsh-llm-github-copilot
@@ -26,7 +34,7 @@ After installation, register the plugin in the profile's `cordis.patch.yml`:
 ```yaml
 - insert:
     - id: llm-github-copilot
-      name: '@deepseek-ai/dsh-llm-github-copilot'
+      name: '@lujianjun19/dsh-llm-github-copilot'
 ```
 
 Restart DSH to activate:
@@ -112,7 +120,7 @@ After Host changes restart DSH; after Client-only changes a hard refresh (`Ctrl+
 
 ```sh
 cp -r ~/.dsh/plugin-backups/dsh-llm-github-copilot/<timestamp> \
-      ~/.dsh/profiles/web/node_modules/@deepseek-ai/dsh-llm-github-copilot
+      ~/.dsh/profiles/web/node_modules/@lujianjun19/dsh-llm-github-copilot
 dsh web
 ```
 

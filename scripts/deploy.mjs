@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const dshHome = resolve(process.env.DSH_HOME ?? join(homedir(), '.dsh'))
-const parent = join(dshHome, 'profiles', 'web', 'node_modules', '@deepseek-ai')
+const parent = join(dshHome, 'profiles', 'web', 'node_modules', '@lujianjun19')
 const target = join(parent, 'dsh-llm-github-copilot')
 const stage = join(parent, `.dsh-llm-github-copilot.deploy-${process.pid}`)
 const backupRoot = join(dshHome, 'plugin-backups', 'dsh-llm-github-copilot')
