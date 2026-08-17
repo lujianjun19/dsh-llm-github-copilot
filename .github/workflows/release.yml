@@ -53,13 +53,6 @@ jobs:
           fi
           echo "✅ version $PKG_VERSION matches tag $GITHUB_REF_NAME"
 
-      - name: Debug npm auth config
-        run: |
-          echo '=== ~/.npmrc ===' && cat ~/.npmrc 2>/dev/null || echo '(empty)'
-          echo '=== project .npmrc ===' && cat .npmrc 2>/dev/null || echo '(empty)'
-          echo '=== npm config list ===' && npm config list
-          echo '=== OIDC env ===' && printenv | grep -i 'ACTIONS_ID_TOKEN\|NODE_AUTH' || echo '(none)'
-
       # Publish step: wipe any .npmrc injected by setup-node (which contains
       # always-auth=true and an empty _authToken placeholder that prevent the
       # npm CLI from falling through to OIDC token exchange). Write a minimal
