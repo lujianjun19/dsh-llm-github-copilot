@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-08-18
+
+### Changed
+
+- Merge INSTALL content into README and remove standalone INSTALL files.
+- Remove debug step from release workflow.
+
 ## [0.3.1] - 2026-08-17
 
 ### Changed
