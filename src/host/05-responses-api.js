@@ -138,6 +138,13 @@ function mapResponsesUsage(usage) {
 async function* translateResponses(payloads) {
   let nextIndex = 0;
   let textBlock;
+  // The currently open reasoning block. GitHub Copilot's gpt-5.x Responses
+  // stream assigns a DIFFERENT opaque `item_id` to every reasoning event
+  // (output_item.added, reasoning_summary_part.added, *_text.delta,
+  // output_item.done all differ), so id-based matching is impossible. Reasoning
+  // items are strictly sequential and non-overlapping, so a single reference to
+  // the current open block routes every delta and closes it reliably.
+  let reasoningBlock;
   const toolBlocks = /* @__PURE__ */ new Map();
   const reasoningBlocks = /* @__PURE__ */ new Map();
   const order = [];
@@ -184,6 +191,7 @@ async function* translateResponses(payloads) {
           yield { type: "block-start", index: block.index, blockType: "tool-call" };
         } else if (item?.type === "reasoning") {
           const block = open("reasoning");
+          reasoningBlock = block;
           reasoningBlocks.set(item.id ?? "", block);
           yield { type: "block-start", index: block.index, blockType: "reasoning" };
         }
@@ -202,8 +210,23 @@ async function* translateResponses(payloads) {
         yield { type: "text-delta", index: block.index, text: event.delta ?? "" };
         break;
       }
+      case "response.reasoning_summary_part.added": {
+        // A reasoning item may contain multiple summary parts. Insert a blank
+        // line between parts so distinct summary paragraphs stay separated in
+        // the Think block. The first part (empty block) needs no separator.
+        const block = reasoningBlock ?? order.find((b) => b.kind === "reasoning" && !b._closed);
+        if (block !== void 0 && block.text.length > 0) {
+          block.text += "\n\n";
+          yield { type: "reasoning-delta", index: block.index, text: "\n\n" };
+        }
+        break;
+      }
       case "response.reasoning_summary_text.delta": {
-        const block = reasoningBlocks.get(event.item_id ?? "") ?? order.find((b) => b.kind === "reasoning" && !b._closed);
+        // Route by the current open reasoning block, NOT by event.item_id:
+        // Copilot's gpt-5.x stream gives every event a distinct opaque id, so a
+        // map lookup on item_id never hits. Fall back to the last open reasoning
+        // block for resilience.
+        const block = reasoningBlock ?? order.find((b) => b.kind === "reasoning" && !b._closed);
         if (block !== void 0) {
           block.text += event.delta ?? "";
           yield { type: "reasoning-delta", index: block.index, text: event.delta ?? "" };
@@ -255,10 +278,16 @@ async function* translateResponses(payloads) {
             toolBlocks.delete(item.id ?? "");
           }
         } else if (item?.type === "reasoning") {
-          const block = reasoningBlocks.get(item.id ?? "");
+          // Close by the tracked reference, NOT by item.id: the id in this
+          // done event differs from the one in output_item.added, so a map
+          // lookup would miss and the reasoning block would never emit
+          // block-end — leaving the Think row stuck "streaming" forever and
+          // corrupting the next reasoning segment.
+          const block = reasoningBlock ?? order.find((b) => b.kind === "reasoning" && !b._closed);
           if (block !== void 0) {
             block._closed = true;
             yield { type: "block-end", index: block.index, block: { type: "reasoning", text: block.text } };
+            if (reasoningBlock === block) reasoningBlock = void 0;
             reasoningBlocks.delete(item.id ?? "");
           }
         }

@@ -4,6 +4,33 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [0.3.10] - 2026-08-18
+
+### Fixed
+
+- **Responses API (gpt-5.x): Think block stuck after first segment — reasoning routed by mismatched opaque `item_id`**
+
+  GitHub Copilot's gpt-5.x (`/responses`) stream assigns a **different** opaque
+  `item_id` to every reasoning event: `output_item.added`,
+  `reasoning_summary_part.added`, `reasoning_summary_text.delta`, and
+  `output_item.done` each carry a distinct encrypted token. The translator
+  matched reasoning blocks by `reasoningBlocks.get(item_id)`, which therefore
+  never hit:
+
+  - `output_item.done` could not find the block, so `block-end` was never
+    emitted — the Think row stayed "streaming" forever (appeared stuck), and
+  - later reasoning segments fell back to the first still-open block via
+    `order.find`, corrupting multi-segment display.
+
+  **Fix:** `translateResponses()` now tracks the current open reasoning block by
+  reference (`reasoningBlock`) instead of by id. Reasoning items are sequential
+  and non-overlapping, so a single reference routes every delta and closes the
+  block reliably. Multiple summary parts within one item are separated by a
+  blank line. New file `tests/responses-reasoning-stream.test.mjs` adds 6
+  regression tests replaying the mismatched-id event pattern.
+
+  `translateResponses` is now exported from `lib/index.js` for testing.
+
 ## [0.3.9] - 2026-08-18
 
 ### Fixed
