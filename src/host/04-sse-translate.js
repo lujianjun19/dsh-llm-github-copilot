@@ -80,7 +80,9 @@ async function* translate(payloads) {
     }
     for (const choice of chunk.choices ?? []) {
       const delta = choice.delta;
-      const reasoning = typeof delta?.reasoning_content === "string" ? delta.reasoning_content : typeof delta?.reasoning === "string" ? delta.reasoning : "";
+      const reasoning = typeof delta?.reasoning_content === "string" ? delta.reasoning_content
+        : typeof delta?.reasoning_text === "string" ? delta.reasoning_text
+        : typeof delta?.reasoning === "string" ? delta.reasoning : "";
       if (reasoning.length > 0) {
         if (!reasoningBlock) {
           reasoningBlock = open("reasoning");

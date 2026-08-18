@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-08-18
+
+### Fixed
+
+- **Chat-completions: Claude `reasoning_text` delta field not recognised**
+
+  GitHub Copilot proxies Claude's thinking content using the field name
+  `reasoning_text` in streaming deltas, while the adapter only checked
+  `reasoning_content` and `reasoning`.  As a result no `reasoning-delta`
+  chunks were emitted and the Think block never appeared in the UI.
+
+  **Fix:** `translate()` in `04-sse-translate.js` now checks
+  `reasoning_text` as the second candidate (after `reasoning_content`,
+  before `reasoning`), matching the actual field name GitHub Copilot uses.
+
+  `serializeAssistant()` also serialises prior reasoning turns under both
+  `reasoning_content` and `reasoning_text` for round-trip compatibility.
+
 ## [0.3.7] - 2026-08-18
 
 ### Fixed
