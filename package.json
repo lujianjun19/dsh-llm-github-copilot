@@ -21,14 +21,17 @@
   "files": [
     "LICENSE",
     "README.md",
-    "INSTALL.md",
-    "INSTALL.zh.md",
+    "README.zh.md",
     "AGENTS.md",
     "CHANGELOG.md",
     "docs/**",
     "lib/index.js",
-    "lib/client.js",
-    "vendor/undici/**"
+    "lib/client.js"
+  ],
+  "bundledDependencies": [
+    "undici",
+    "eventsource-parser",
+    "@deepseek-ai/schemastery"
   ],
   "dsh": {
     "bundle": {
@@ -50,16 +53,16 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-api-remotes": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-client-locale": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-client-ui-commands": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-client-ui-conversation": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-client-ui-primitives": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-client-ui-settings": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-client-ui-settings-general": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-credentials": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-commands": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-credentials": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-launch-environment": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-llm": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
@@ -68,7 +71,8 @@
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1",
-    "eventsource-parser": "^3.1.0"
+    "eventsource-parser": "^3.1.0",
+    "undici": "^6.28.0"
   },
   "repository": {
     "type": "git",

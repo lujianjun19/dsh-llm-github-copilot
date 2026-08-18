@@ -14,7 +14,10 @@ const stage = join(parent, `.dsh-llm-github-copilot.deploy-${process.pid}`)
 const backupRoot = join(dshHome, 'plugin-backups', 'dsh-llm-github-copilot')
 const stamp = new Date().toISOString().replaceAll(':', '').replaceAll('.', '-')
 const backup = join(backupRoot, `v${manifest.version}-${stamp}`)
-const releaseEntries = ['package.json', 'LICENSE', 'README.md', 'INSTALL.md', 'AGENTS.md', 'CHANGELOG.md', 'docs', 'lib', 'vendor']
+const releaseEntries = ['package.json', 'LICENSE', 'README.md', 'README.zh.md', 'AGENTS.md', 'CHANGELOG.md', 'docs', 'lib']
+// Runtime dependencies bundled from local node_modules (avoids network on deploy).
+// Keep in sync with `dependencies` in package.json (exclude peerDependencies and devDependencies).
+const bundledDeps = ['undici', 'eventsource-parser', '@deepseek-ai/schemastery']
 
 const run = (command, args) => execFileSync(command, args, { cwd: root, stdio: 'inherit' })
 const exists = async path => stat(path).then(() => true, error => {
@@ -31,6 +34,14 @@ await rm(stage, { recursive: true, force: true })
 await mkdir(stage)
 for (const entry of releaseEntries) {
   await cp(join(root, entry), join(stage, entry), { recursive: true, force: true })
+}
+await mkdir(join(stage, 'node_modules'), { recursive: true })
+for (const dep of bundledDeps) {
+  const src = join(root, 'node_modules', dep)
+  if (!await exists(src)) {
+    throw new Error(`Bundled dependency not found: ${dep}. Run 'npm install' first.`)
+  }
+  await cp(src, join(stage, 'node_modules', dep), { recursive: true, force: true })
 }
 
 let movedCurrent = false
