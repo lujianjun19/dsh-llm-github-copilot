@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-08-18
+
+### Fixed
+
+- Include `cordis.patch.yml` in `package.json` `files` and `scripts/deploy.mjs`
+  `releaseEntries`. When installed via `dsh plugin add github:...`, DSH loads
+  the package as a bundle and requires the file declared by `dsh.bundle.patch`
+  to be present — it was missing and caused a boot-time `ENOENT` error.
+
 ## [0.3.3] - 2026-08-18
 
 ### Changed
