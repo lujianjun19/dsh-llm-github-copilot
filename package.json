@@ -21,6 +21,7 @@
   "files": [
     "LICENSE",
     "README.md",
+    "cordis.patch.yml",
     "README.zh.md",
     "AGENTS.md",
     "CHANGELOG.md",

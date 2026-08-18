@@ -14,7 +14,7 @@ const stage = join(parent, `.dsh-llm-github-copilot.deploy-${process.pid}`)
 const backupRoot = join(dshHome, 'plugin-backups', 'dsh-llm-github-copilot')
 const stamp = new Date().toISOString().replaceAll(':', '').replaceAll('.', '-')
 const backup = join(backupRoot, `v${manifest.version}-${stamp}`)
-const releaseEntries = ['package.json', 'LICENSE', 'README.md', 'README.zh.md', 'AGENTS.md', 'CHANGELOG.md', 'docs', 'lib']
+const releaseEntries = ['cordis.patch.yml', 'package.json', 'LICENSE', 'README.md', 'README.zh.md', 'AGENTS.md', 'CHANGELOG.md', 'docs', 'lib']
 // Runtime dependencies bundled from local node_modules (avoids network on deploy).
 // Keep in sync with `dependencies` in package.json (exclude peerDependencies and devDependencies).
 const bundledDeps = ['undici', 'eventsource-parser', '@deepseek-ai/schemastery']

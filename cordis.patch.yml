@@ -1,3 +1,6 @@
+# dsh-llm-github-copilot bundle patch.
+# Declares the GitHub Copilot LLM adapter entry. Applied as one layer in the
+# profile bundle stack; the user's cordis.patch.yml may override config by id.
 - insert:
     - id: llm-github-copilot
       name: '@lujianjun19/dsh-llm-github-copilot'
