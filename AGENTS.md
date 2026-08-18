@@ -161,19 +161,20 @@ both were added when the plugin was first registered and persist across installs
 After each install, confirm all of the following:
 
 ```bash
-VER=$(node -e "console.log(require('/home/ljjun/.dsh/profiles/web/node_modules/@lujianjun19/dsh-llm-github-copilot/package.json').version)")
-echo "version: $VER"
+PLUGIN=~/.dsh/profiles/web/node_modules/@lujianjun19/dsh-llm-github-copilot
+
+node -e "console.log('version:', require('$PLUGIN/package.json').version)"
 
 # cordis.patch.yml present
-cat ~/.dsh/profiles/web/node_modules/@lujianjun19/dsh-llm-github-copilot/cordis.patch.yml
+cat $PLUGIN/cordis.patch.yml
 
 # client module id matches package name
-grep '^  id:' ~/.dsh/profiles/web/node_modules/@lujianjun19/dsh-llm-github-copilot/lib/client.js
+grep '^  id:' $PLUGIN/lib/client.js
 
 # runtime deps resolvable
 node --input-type=module << 'EOF'
 import { createRequire } from 'module'
-const req = createRequire('/home/ljjun/.dsh/profiles/web/node_modules/@lujianjun19/dsh-llm-github-copilot/lib/index.js')
+const req = createRequire(process.env.PLUGIN + '/lib/index.js')
 for (const dep of ['undici', 'eventsource-parser', '@deepseek-ai/schemastery']) {
   try { req(dep + '/package.json'); console.log('OK', dep) }
   catch(e) { console.log('FAIL', dep, e.message.split('\n')[0]) }
@@ -190,9 +191,9 @@ Expected output for every check: version matches the released tag, `id` is
 
 ### 5. Known prerequisites
 
-- **pnpm ≥ 9** must be on `PATH` before the Windows-side pnpm 7.x (WSL shares
-  `/mnt/c/...`). Install once with `npm install -g pnpm@latest` under the NVM
-  Node version in use.
+- **pnpm ≥ 9** must be on `PATH` before any system-installed pnpm 7.x that may
+  be present (e.g. via a Windows/WSL shared path). Install once with
+  `npm install -g pnpm@latest` under the NVM Node version in use.
 - **git URL rewrite** for HTTPS auth (set once per session before GitHub installs):
   ```bash
   TOKEN=$(python3 ~/.pi/agent/skills/github-auth/scripts/get_token.py)
