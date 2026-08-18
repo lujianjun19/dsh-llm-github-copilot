@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [0.3.12] - 2026-08-18
+
+### Fixed
+
+- **Responses API (gpt-5.x): tool-call arguments dropped → `presenter failed for tool/call: Unexpected end of JSON input`**
+
+  Same opaque-`item_id` mismatch as the reasoning bug, but for tool calls:
+  gpt-5.x assigns a **different** id to `output_item.added`,
+  `function_call_arguments.delta`, `function_call_arguments.done`, and
+  `output_item.done`. Matching the tool-call block by `toolBlocks.get(item_id)`
+  never hit, so **every argument delta was dropped** and the block's `arguments`
+  stayed empty. The client then did `JSON.parse("")`, throwing
+  `Unexpected end of JSON input` and falling back to a generic card
+  (`api-proxy: presenter failed for tool/call`).
+
+  **Fix:** `translateResponses()` now tracks the current open tool-call block by
+  reference (`toolBlock`) and routes argument deltas / `.done` / close through it
+  instead of the mismatched id. Verified against the live stream: the
+  authoritative complete arguments arrive on `function_call_arguments.done` and
+  `output_item.done`, both now correctly applied. New file
+  `tests/responses-toolcall-stream.test.mjs` adds 4 regression tests.
+
 ## [0.3.11] - 2026-08-18
 
 ### Changed

@@ -147,6 +147,14 @@ async function* translateResponses(payloads) {
   // items are strictly sequential and non-overlapping, so a single reference to
   // the current open block routes every delta and closes it reliably.
   let reasoningBlock;
+  // The currently open tool-call block. Same problem as reasoning: gpt-5.x
+  // assigns a DIFFERENT opaque item_id to output_item.added,
+  // function_call_arguments.delta/.done, and output_item.done, so a map lookup
+  // by item_id never hits — every argument delta was dropped and the block's
+  // arguments stayed empty, which made the client's JSON.parse("") throw
+  // "Unexpected end of JSON input". Tool calls stream sequentially and do not
+  // overlap, so a single reference routes deltas and closes the block reliably.
+  let toolBlock;
   const toolBlocks = /* @__PURE__ */ new Map();
   const reasoningBlocks = /* @__PURE__ */ new Map();
   const order = [];
@@ -187,6 +195,7 @@ async function* translateResponses(payloads) {
         const item = event.item;
         if (item?.type === "function_call") {
           const block = open("tool-call");
+          toolBlock = block;
           toolBlocks.set(item.id ?? "", block);
           if (typeof item.name === "string") block.name = item.name;
           if (typeof item.call_id === "string") block.callId = item.call_id;
@@ -236,7 +245,7 @@ async function* translateResponses(payloads) {
         break;
       }
       case "response.function_call_arguments.delta": {
-        const block = toolBlocks.get(event.item_id ?? "");
+        const block = toolBlock ?? order.find((b) => b.kind === "tool-call" && !b._closed);
         if (block !== void 0) {
           block.text += event.delta ?? "";
           yield {
@@ -254,7 +263,9 @@ async function* translateResponses(payloads) {
         // authoritative complete value.  The delta stream only forwards the
         // opening/closing quotes on some Copilot endpoints, so this event (not
         // the deltas) is what must populate the block's final arguments.
-        const block = toolBlocks.get(event.item_id ?? "");
+        // Route by the tracked reference: the item_id here differs from the one
+        // in output_item.added, so a map lookup would miss.
+        const block = toolBlock ?? order.find((b) => b.kind === "tool-call" && !b._closed);
         if (block !== void 0 && typeof event.arguments === "string" && event.arguments.length > 0) {
           block.text = event.arguments;
         }
@@ -267,7 +278,10 @@ async function* translateResponses(payloads) {
           yield { type: "block-end", index: textBlock.index, block: { type: "text", text: textBlock.text } };
           textBlock = void 0;
         } else if (item?.type === "function_call") {
-          const block = toolBlocks.get(item.id ?? "");
+          // Close by the tracked reference, NOT by item.id (which differs from
+          // output_item.added's id). item.arguments here is the authoritative
+          // complete JSON string; prefer it, else keep what .done captured.
+          const block = toolBlock ?? order.find((b) => b.kind === "tool-call" && !b._closed);
           if (block !== void 0) {
             if (typeof item.name === "string") block.name = item.name;
             if (typeof item.call_id === "string") block.callId = item.call_id;
@@ -277,6 +291,7 @@ async function* translateResponses(payloads) {
             if (typeof item.arguments === "string" && item.arguments.length > 0) block.text = item.arguments;
             block._closed = true;
             yield { type: "block-end", index: block.index, block: close(block) };
+            if (toolBlock === block) toolBlock = void 0;
             toolBlocks.delete(item.id ?? "");
           }
         } else if (item?.type === "reasoning") {
