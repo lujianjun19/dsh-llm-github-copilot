@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [0.3.11] - 2026-08-18
+
+### Changed
+
+- **Responses API (gpt-5.x): use `reasoning.summary: "detailed"` instead of `"concise"`**
+
+  With `"concise"`, GitHub Copilot's gpt-5.x emits only a single one-line title
+  per reasoning step (e.g. `**Checking user input relevance**`, ~25-34 chars),
+  which made the Think block look like it was "stuck" after one short line even
+  though the block-start/delta/block-end cycle was completing correctly.
+  `"detailed"` yields multi-sentence summaries per step, so the Think block now
+  shows substantive reasoning content.
+
+  Diagnosed via event-stream tracing: each reasoning segment correctly produced
+  `block-start → reasoning-delta → block-end`; the perceived "stuck" state was
+  purely the one-line concise summary, not a streaming bug.
+
 ## [0.3.10] - 2026-08-18
 
 ### Fixed
