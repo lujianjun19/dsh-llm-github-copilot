@@ -105,6 +105,106 @@ Do not echo or log the token value.
   publishes to npm via OIDC Trusted Publishing (no `NPM_TOKEN` needed)
   and creates a GitHub Release automatically.
 
+## Post-release installation test
+
+After every tag push, verify both install sources before declaring the release
+done. Run the steps below in order.
+
+### 0. Wait for CI to publish
+
+```bash
+TOKEN=$(python3 ~/.pi/agent/skills/github-auth/scripts/get_token.py)
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://api.github.com/repos/lujianjun19/dsh-llm-github-copilot/actions/runs?per_page=3" \
+  | python3 -c "
+import sys,json
+for r in json.load(sys.stdin).get('workflow_runs',[]):
+    print(r['name'], '|', r['status'], '|', r['conclusion'] or '-', '|', r['head_branch'] or '')
+"
+```
+
+Wait until the `Release` workflow shows `completed | success` for the new tag.
+
+### 1. Helper — clean the profile slot
+
+Run this before each source test to start from a clean state:
+
+```bash
+cd ~/.dsh/profiles/web
+python3 -c "
+import json
+p = json.load(open('package.json'))
+p['dependencies'] = {k:v for k,v in p['dependencies'].items() if 'lujianjun' not in k}
+p['dsh']['profile']['bundles'] = [b for b in p['dsh']['profile']['bundles'] if 'lujianjun' not in b]
+open('package.json','w').write(json.dumps(p, indent=2)+'\n')
+"
+rm -rf node_modules/@lujianjun19
+```
+
+### 2. Test — install from npmjs
+
+```bash
+dsh plugin --profile web add @lujianjun19/dsh-llm-github-copilot
+```
+
+### 3. Test — install from GitHub source
+
+```bash
+dsh plugin --profile web add github:lujianjun19/dsh-llm-github-copilot -w
+```
+
+The `-w` flag and `allowBuilds` entry in `pnpm-workspace.yaml` are required;
+both were added when the plugin was first registered and persist across installs.
+
+### 4. Verify each install
+
+After each install, confirm all of the following:
+
+```bash
+VER=$(node -e "console.log(require('/home/ljjun/.dsh/profiles/web/node_modules/@lujianjun19/dsh-llm-github-copilot/package.json').version)")
+echo "version: $VER"
+
+# cordis.patch.yml present
+cat ~/.dsh/profiles/web/node_modules/@lujianjun19/dsh-llm-github-copilot/cordis.patch.yml
+
+# client module id matches package name
+grep '^  id:' ~/.dsh/profiles/web/node_modules/@lujianjun19/dsh-llm-github-copilot/lib/client.js
+
+# runtime deps resolvable
+node --input-type=module << 'EOF'
+import { createRequire } from 'module'
+const req = createRequire('/home/ljjun/.dsh/profiles/web/node_modules/@lujianjun19/dsh-llm-github-copilot/lib/index.js')
+for (const dep of ['undici', 'eventsource-parser', '@deepseek-ai/schemastery']) {
+  try { req(dep + '/package.json'); console.log('OK', dep) }
+  catch(e) { console.log('FAIL', dep, e.message.split('\n')[0]) }
+}
+EOF
+
+# DSH config tree recognises the plugin
+dsh web --dump-config 2>&1 | grep -A2 'llm-github'
+```
+
+Expected output for every check: version matches the released tag, `id` is
+`@lujianjun19/dsh-llm-github-copilot`, all three deps print `OK`, and
+`dump-config` shows `llm-github-copilot` in the tree.
+
+### 5. Known prerequisites
+
+- **pnpm ≥ 9** must be on `PATH` before the Windows-side pnpm 7.x (WSL shares
+  `/mnt/c/...`). Install once with `npm install -g pnpm@latest` under the NVM
+  Node version in use.
+- **git URL rewrite** for HTTPS auth (set once per session before GitHub installs):
+  ```bash
+  TOKEN=$(python3 ~/.pi/agent/skills/github-auth/scripts/get_token.py)
+  git config --global url."https://${TOKEN}@github.com/".insteadOf "https://github.com/"
+  git config --global url."https://${TOKEN}@github.com/".insteadOf "git+ssh://git@github.com/"
+  ```
+  Clean up afterwards:
+  ```bash
+  git config --global --unset url."https://${TOKEN}@github.com/".insteadOf
+  # or edit ~/.gitconfig to remove the [url] sections
+  ```
+
 ## DeepSeek Harness compatibility
 
 - Target the installed `@deepseek-ai/dsh` rc.6 APIs unless a compatibility change is explicitly approved.
