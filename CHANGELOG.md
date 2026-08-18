@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-08-18
+
+### Fixed
+
+- `client.js` module id was still `@deepseek-ai/dsh-llm-github-copilot`; updated
+  to `@lujianjun19/dsh-llm-github-copilot` to match the installed package name.
+  DSH rejected the bundle at browser startup with "loaded without registering".
+
 ## [0.3.4] - 2026-08-18
 
 ### Fixed
