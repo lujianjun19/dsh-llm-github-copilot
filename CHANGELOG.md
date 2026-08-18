@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-08-18
+
+### Fixed
+
+- Remove `bundledDependencies` 2014 it caused `github:` source installs to skip
+  installing runtime deps (pnpm treats bundled deps as already present).
+  All three install paths now work correctly: `npm run deploy`, `npm publish`,
+  and `dsh plugin add github:`.
+
+
 ## [0.3.5] - 2026-08-18
 
 ### Fixed
