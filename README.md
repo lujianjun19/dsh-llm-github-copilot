@@ -65,6 +65,16 @@ You can also set the token directly as an environment variable (useful for CI or
 export GITHUB_COPILOT_OAUTH_TOKEN=<your-github-oauth-token>
 ```
 
+**Supported token types:**
+
+| Prefix | Source |
+|--------|--------|
+| `gho_` | OAuth token (`gh auth login`) |
+| `github_pat_` | Fine-grained PAT (requires **Copilot** permission) |
+| `ghu_` | GitHub App user token (VS Code client) |
+
+`ghp_` classic PATs are not accepted by the Copilot API.
+
 ## Features
 
 **Model discovery** — available models are fetched live from `https://api.githubcopilot.com/models` on each login and cached for 5 minutes. No static list to maintain.
@@ -123,6 +133,23 @@ cp -r ~/.dsh/plugin-backups/dsh-llm-github-copilot/<timestamp> \
       ~/.dsh/profiles/web/node_modules/@lujianjun19/dsh-llm-github-copilot
 dsh web
 ```
+
+## Troubleshooting
+
+**Model selector shows no GitHub Copilot group after restart**
+The plugin loaded in a previous process that didn't pick up the new package. Restart `dsh web`. The stored token is preserved; no need to sign in again.
+
+**Models appear but Claude is missing**
+Your egress IP is restricted. Export `HTTPS_PROXY` pointing to a proxy that exits from an unrestricted region, then restart `dsh web`.
+
+**`/copilot-login` times out or reports a network error**
+Transient network issue during device-code polling. Run `/copilot-login` again to get a fresh code (the old one is invalidated automatically).
+
+**`configurable provider "github-copilot" is already declared`**
+An older version of this plugin used the route name `github-copilot`, which conflicts with a DSH built-in. This version uses `github-copilot-official`. Verify that your `cordis.patch.yml` uses `id: llm-github-copilot` and `name: '@lujianjun19/dsh-llm-github-copilot'`.
+
+**Token expired**
+No action needed. The plugin stores the long-lived GitHub OAuth token and refreshes the short-lived Copilot API token automatically before it expires. Only an explicit sign-out or token revocation requires a new `/copilot-login`.
 
 ## License
 

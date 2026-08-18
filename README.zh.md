@@ -65,6 +65,16 @@ dsh web
 export GITHUB_COPILOT_OAUTH_TOKEN=<your-github-oauth-token>
 ```
 
+**支持的 token 类型：**
+
+| 前缀 | 来源 |
+|------|------|
+| `gho_` | OAuth token（`gh auth login` 默认产出） |
+| `github_pat_` | fine-grained PAT（需勾选 **Copilot** 权限） |
+| `ghu_` | GitHub App user token（VS Code 客户端产出） |
+
+`ghp_` 经典 PAT 不被 Copilot API 接受。
+
 ## 功能
 
 **动态模型发现** — 每次登录后从 `https://api.githubcopilot.com/models` 实时拉取可用模型并缓存 5 分钟，无需维护静态列表。
@@ -123,6 +133,23 @@ cp -r ~/.dsh/plugin-backups/dsh-llm-github-copilot/<时间戳> \
       ~/.dsh/profiles/web/node_modules/@lujianjun19/dsh-llm-github-copilot
 dsh web
 ```
+
+## 常见问题
+
+**重启后模型选择器中看不到 "GitHub Copilot"**
+几乎都是因为当前进程没有加载新插件。**重启 `dsh web`** 即可（token 已存好，无需重新登录）。
+
+**能看到 Copilot 模型，但没有 Claude（或模型明显偏少）**
+出口 IP 被限制。GitHub 只对认可的出口返回完整目录（含 Claude）。插件自动读取 shell 中的 `HTTPS_PROXY` 等代理配置，设置好代理后重启 `dsh web` 即可。
+
+**`/copilot-login` 报网络错误或一直等待**
+设备码轮询偶发网络抖动；重新运行一次 `/copilot-login` 拿新口令即可（旧口令随之失效）。
+
+**启动时报 `configurable provider "github-copilot" is already declared`**
+旧版使用了路由名 `github-copilot`（与 DSH 内置冲突）。本版已改为 `github-copilot-official`；确认 `cordis.patch.yml` 里的 `id`/`name` 与本文档一致。
+
+**token 过期了怎么办**
+不用管。底层保存的是长期有效的 GitHub OAuth token；短时效 Copilot token 由插件自动缓存并在过期前刷新。只有主动登出或吊销后才需要重新 `/copilot-login`。
 
 ## 许可证
 
