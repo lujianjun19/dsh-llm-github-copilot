@@ -4,6 +4,34 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-08-18
+
+### Fixed
+
+- **Responses API: tool calls serialized as top-level `function_call` items**
+  ([#bug](https://github.com/lujianjun19/dsh-llm-github-copilot))
+
+  When a conversation contained a prior assistant tool call (i.e. any second+
+  turn using a tool), the adapter placed tool calls inside the assistant
+  message's `content` array with `type: "output_tool_call"`.  The Responses API
+  rejects this with:
+
+  > "Invalid value: 'output_tool_call'. Supported values are: 'output_text', …"
+
+  **Root cause:** `OutputMessageContent` only accepts `output_text` and
+  `refusal`.  Tool calls must be top-level `input[]` items with
+  `type: "function_call"`, not nested inside any message.
+
+  **Fix:** `serializeResponsesMessages()` now emits each tool call as an
+  independent top-level `{ type: "function_call", id, call_id, name, arguments
+  }` item and omits the assistant `message` item entirely when the turn
+  contains only tool calls (no text).
+
+  Only the gpt-5.x family is affected (models routed through `/responses`).
+  Chat-Completions models (gpt-4.x, claude, gemini, …) are unaffected.
+
+  5 new regression tests added to `vision-responses-serialize.test.mjs`.
+
 ## [0.3.6] - 2026-08-18
 
 ### Fixed
