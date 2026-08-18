@@ -1,5 +1,17 @@
 # Repository instructions
 
+## Development workflow
+
+The complete development workflow is documented as a Mermaid diagram:
+
+```text
+docs/WORKFLOW.md
+```
+
+Read it to understand the full cycle: edit → local deploy → commit → release
+→ CI publish → post-release install test. The sections below elaborate each
+phase with exact commands.
+
 ## Source of truth
 
 - Work only in this repository's root directory.
