@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-08-18
+
+### Changed
+
+- Replace `vendor/undici` with a proper npm `dependency`; `deploy.mjs` now
+  bundles runtime deps from local `node_modules/` instead of a hand-copied
+  vendor tree. `bundledDependencies` ensures the same packages are included
+  in the npm publish tarball.
+- Fix `deploy.mjs` release entries: swap removed `INSTALL.md` for `README.zh.md`.
+
 ## [0.3.2] - 2026-08-18
 
 ### Changed
