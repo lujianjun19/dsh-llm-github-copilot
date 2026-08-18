@@ -93,7 +93,7 @@ async function serializeResponsesUserContent(blocks, imageResolver) {
   return parts;
 }
 /** Build the full Responses wire request body. */
-async function serializeResponsesRequest(options, wire, imageResolver) {
+async function serializeResponsesRequest(options, wire, imageResolver, supportsReasoning = false) {
   const input = await serializeResponsesMessages(options.messages, imageResolver);
   if (options.system !== void 0) input.unshift({ role: "system", content: [{ type: "input_text", text: options.system }] });
   const tools = options.tools?.map((tool) => ({
@@ -102,6 +102,15 @@ async function serializeResponsesRequest(options, wire, imageResolver) {
     description: tool.description,
     parameters: tool.parameters
   }));
+  // Always include reasoning.summary when the model supports reasoning so the
+  // API emits response.reasoning_summary_text.delta events in the stream.
+  // When no effort is explicitly selected, omit the effort field and let the
+  // API apply its own default; only the summary key is required to unlock the
+  // streaming events.
+  const reasoningParam = supportsReasoning
+    ? { reasoning: { ...(wire !== void 0 ? { effort: wire.value } : {}), summary: "concise" } }
+    : wire !== void 0 ? { reasoning: { effort: wire.value, summary: "concise" } }
+    : {};
   return {
     model: options.model,
     input,
@@ -110,7 +119,7 @@ async function serializeResponsesRequest(options, wire, imageResolver) {
     ...options.temperature !== void 0 ? { temperature: options.temperature } : {},
     ...options.maxTokens === void 0 ? {} : { max_output_tokens: options.maxTokens },
     ...options.stop !== void 0 ? { stop: options.stop } : {},
-    ...wire === void 0 ? {} : { reasoning: { effort: wire.value } }
+    ...reasoningParam
   };
 }
 function mapResponsesUsage(usage) {

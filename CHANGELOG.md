@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-08-18
+
+### Fixed
+
+- **Responses API (GPT-5.x): Think block never appeared — missing `summary` field**
+
+  The Responses API only emits `response.reasoning_summary_text.delta` streaming
+  events when the request includes `reasoning.summary`. Without it the stream
+  carries no reasoning content regardless of effort level, so the Think block
+  never appeared in the UI.
+
+  **Fix:** `serializeResponsesRequest()` now always includes
+  `reasoning: { summary: "concise" }` when the model declares reasoning
+  capability (`supportsReasoning`), even when no explicit effort is selected.
+  When an effort is selected it is included alongside `summary`.
+
 ## [0.3.8] - 2026-08-18
 
 ### Fixed

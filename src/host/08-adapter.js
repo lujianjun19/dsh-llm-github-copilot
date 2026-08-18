@@ -116,6 +116,7 @@ var GitHubCopilotAdapter = class extends LlmAdapter {
     const endpoints = entry?.endpoints;
     const useResponses = Array.isArray(endpoints) && !endpoints.includes("/chat/completions") && endpoints.includes("/responses");
     const wire = wireReasoning(entry, options.reasoningEffort);
+    const supportsReasoning = reasoningMetadata(entry) !== void 0;
     // Image pre-flight: gate model capability and attachment-service presence
     // before doing any I/O. Text-only requests skip this entirely.
     const containsImage = options.messages.some((m) => contentHasImage(m.content));
@@ -137,7 +138,7 @@ var GitHubCopilotAdapter = class extends LlmAdapter {
       }
     }
     const imageResolver = createImageResolver(attachmentStore, entry, signal);
-    const body = useResponses ? await serializeResponsesRequest(options, wire, imageResolver) : await serializeRequest(options, wire, imageResolver);
+    const body = useResponses ? await serializeResponsesRequest(options, wire, imageResolver, supportsReasoning) : await serializeRequest(options, wire, imageResolver);
     const payload = JSON.stringify(body);
     const path = useResponses ? "/responses" : "/chat/completions";
     const headers = {
