@@ -49,15 +49,17 @@ The deploy command creates a rollback backup and atomically replaces the profile
 ## Dependency management
 
 `scripts/deploy.mjs` does **not** run `npm install` — it copies files directly.
-Runtime `dependencies` must therefore be bundled manually:
+Runtime `dependencies` must therefore be kept in sync in two places:
 
 1. Add the package to `dependencies` in `package.json` and run `npm install`.
-2. Add the same name to `bundledDependencies` in `package.json`.
-3. Add the same name to the `bundledDeps` array in `scripts/deploy.mjs`.
+2. Add the same name to the `bundledDeps` array in `scripts/deploy.mjs`.
 
-This ensures both `npm run deploy` (copies from local `node_modules/`) and
-`npm publish` (uses `bundledDependencies` tarball) include the runtime dep.
-`peerDependencies` and `devDependencies` are excluded from both lists.
+`deploy.mjs` copies each entry from local `node_modules/` into the staged
+plugin directory. Both `npm publish` (npm installs deps automatically from
+`dependencies`) and `github:` source installs (pnpm installs deps into the
+profile's hoisted `node_modules/`) resolve deps without needing them bundled
+in the tarball — so **no `bundledDependencies` field is used**.
+`peerDependencies` and `devDependencies` are excluded from `bundledDeps`.
 
 ## Release file checklist
 

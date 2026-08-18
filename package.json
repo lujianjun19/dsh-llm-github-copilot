@@ -29,11 +29,6 @@
     "lib/index.js",
     "lib/client.js"
   ],
-  "bundledDependencies": [
-    "undici",
-    "eventsource-parser",
-    "@deepseek-ai/schemastery"
-  ],
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
