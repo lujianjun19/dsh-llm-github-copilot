@@ -79,44 +79,17 @@ function mapUsage(usage) {
     ...reasoning !== void 0 ? { reasoningTokens: reasoning } : {}
   };
 }
-function closeBlock(block) {
-  switch (block.kind) {
-    case "text": return { type: "text", text: block.text };
-    case "reasoning": return { type: "reasoning", text: block.text };
-    case "tool-call": return {
-      type: "tool-call",
-      id: CallId(block.callId ?? ""),
-      name: block.name ?? "",
-      arguments: block.text
-    };
-  }
-}
 /** Consume SSE data payloads and yield harness StreamChunks. */
 async function* translate(payloads) {
-  let nextIndex = 0;
-  let textBlock;
-  let reasoningBlock;
-  const toolBlocks = /* @__PURE__ */ new Map();
-  const order = [];
+  const blocks = new BlockStream();
+  // Chat-completions routes tool calls by the wire's numeric `call.index`.
+  const toolHandles = /* @__PURE__ */ new Map();
   let pendingFinish;
+  let pendingFailure;
   let pendingUsage;
-  function open(kind) {
-    const block = { index: nextIndex++, kind, text: "" };
-    order.push(block);
-    return block;
-  }
   for await (const payload of payloads) {
     if (payload === "[DONE]") {
-      for (const block of order) yield { type: "block-end", index: block.index, block: closeBlock(block) };
-      if (pendingUsage) yield { type: "usage", usage: pendingUsage };
-      const reason = pendingFinish ?? { kind: "stop" };
-      yield {
-        type: "finish",
-        reason: reason.kind === "stop" && order.length === 0 ? {
-          kind: "error",
-          failure: { message: "model returned a completed response with no content", code: EMPTY_RESPONSE_CODE }
-        } : reason
-      };
+      yield* blocks.finish({ usage: pendingUsage, reason: pendingFinish, failure: pendingFailure });
       return;
     }
     let chunk;
@@ -130,43 +103,28 @@ async function* translate(payloads) {
       const reasoning = typeof delta?.reasoning_content === "string" ? delta.reasoning_content
         : typeof delta?.reasoning_text === "string" ? delta.reasoning_text
         : typeof delta?.reasoning === "string" ? delta.reasoning : "";
-      if (reasoning.length > 0) {
-        if (!reasoningBlock) {
-          reasoningBlock = open("reasoning");
-          yield { type: "block-start", index: reasoningBlock.index, blockType: "reasoning" };
-        }
-        reasoningBlock.text += reasoning;
-        yield { type: "reasoning-delta", index: reasoningBlock.index, text: reasoning };
-      }
+      if (reasoning.length > 0) yield* blocks.reasoning(reasoning);
       const content = delta?.content;
-      if (typeof content === "string" && content.length > 0) {
-        if (!textBlock) {
-          textBlock = open("text");
-          yield { type: "block-start", index: textBlock.index, blockType: "text" };
-        }
-        textBlock.text += content;
-        yield { type: "text-delta", index: textBlock.index, text: content };
-      }
+      if (typeof content === "string" && content.length > 0) yield* blocks.text(content);
       for (const call of delta?.tool_calls ?? []) {
-        let block = toolBlocks.get(call.index);
-        if (!block) {
-          block = open("tool-call");
-          toolBlocks.set(call.index, block);
-          yield { type: "block-start", index: block.index, blockType: "tool-call" };
+        let handle = toolHandles.get(call.index);
+        if (handle === void 0) {
+          const opened = blocks.openToolCall({ name: call.function?.name, callId: call.id });
+          handle = opened.handle;
+          toolHandles.set(call.index, handle);
+          yield* opened.chunks;
+        } else {
+          blocks.updateTool(handle, { name: call.function?.name, callId: call.id });
         }
-        if (call.id !== void 0) block.callId = call.id;
-        if (call.function?.name !== void 0) block.name = call.function.name;
-        const fragment = call.function?.arguments ?? "";
-        block.text += fragment;
-        yield {
-          type: "tool-call-delta",
-          index: block.index,
-          id: CallId(block.callId ?? ""),
-          ...block.name !== void 0 ? { name: block.name } : {},
-          argumentsDelta: fragment
-        };
+        yield* blocks.toolArgs(handle, call.function?.arguments ?? "");
       }
-      if (typeof choice.finish_reason === "string") pendingFinish = mapFinishReason(choice.finish_reason);
+      if (typeof choice.finish_reason === "string") {
+        // An error-kind finish reason is a wire failure: route it through the
+        // failure slot so its specific message survives the empty-response rule.
+        const mapped = mapFinishReason(choice.finish_reason);
+        if (mapped.kind === "error") pendingFailure = mapped;
+        else pendingFinish = mapped;
+      }
     }
     if (chunk.usage) pendingUsage = mapUsage(chunk.usage);
   }

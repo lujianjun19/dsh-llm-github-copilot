@@ -138,46 +138,17 @@ function mapResponsesUsage(usage) {
 }
 /** Consume Responses SSE payloads and yield harness StreamChunks. */
 async function* translateResponses(payloads) {
-  let nextIndex = 0;
-  let textBlock;
-  // The currently open reasoning block. GitHub Copilot's gpt-5.x Responses
-  // stream assigns a DIFFERENT opaque `item_id` to every reasoning event
-  // (output_item.added, reasoning_summary_part.added, *_text.delta,
-  // output_item.done all differ), so id-based matching is impossible. Reasoning
-  // items are strictly sequential and non-overlapping, so a single reference to
-  // the current open block routes every delta and closes it reliably.
-  let reasoningBlock;
-  // The currently open tool-call block. Same problem as reasoning: gpt-5.x
-  // assigns a DIFFERENT opaque item_id to output_item.added,
-  // function_call_arguments.delta/.done, and output_item.done, so a map lookup
-  // by item_id never hits — every argument delta was dropped and the block's
-  // arguments stayed empty, which made the client's JSON.parse("") throw
-  // "Unexpected end of JSON input". Tool calls stream sequentially and do not
-  // overlap, so a single reference routes deltas and closes the block reliably.
-  let toolBlock;
-  const toolBlocks = /* @__PURE__ */ new Map();
-  const reasoningBlocks = /* @__PURE__ */ new Map();
-  const order = [];
+  const blocks = new BlockStream();
+  // gpt-5.x rotates a DIFFERENT opaque `item_id` across every event of one
+  // logical item (output_item.added, *_text.delta, output_item.done all
+  // differ), so id-based matching is impossible. Reasoning and tool-call items
+  // stream strictly sequentially and never overlap, so a single tracked handle
+  // per kind routes every delta and closes the block reliably. Text is likewise
+  // a single open block at a time, owned inside BlockStream.
+  let toolHandle;
   let finishReason;
   let usage;
   let failure;
-  const open = (kind) => {
-    const block = { index: nextIndex++, kind, text: "" };
-    order.push(block);
-    return block;
-  };
-  const close = (block) => {
-    switch (block.kind) {
-      case "text": return { type: "text", text: block.text };
-      case "reasoning": return { type: "reasoning", text: block.text };
-      case "tool-call": return {
-        type: "tool-call",
-        id: CallId(block.callId ?? ""),
-        name: block.name ?? "",
-        arguments: block.text
-      };
-    }
-  };
 
   for await (const payload of payloads) {
     if (payload === "[DONE]") break;
@@ -191,150 +162,80 @@ async function* translateResponses(payloads) {
       case "response.output_item.added": {
         const item = event.item;
         if (item?.type === "function_call") {
-          const block = open("tool-call");
-          toolBlock = block;
-          toolBlocks.set(item.id ?? "", block);
-          if (typeof item.name === "string") block.name = item.name;
-          if (typeof item.call_id === "string") block.callId = item.call_id;
-          yield { type: "block-start", index: block.index, blockType: "tool-call" };
+          const opened = blocks.openToolCall({ name: item.name, callId: item.call_id });
+          toolHandle = opened.handle;
+          yield* opened.chunks;
         } else if (item?.type === "reasoning") {
-          const block = open("reasoning");
-          reasoningBlock = block;
-          reasoningBlocks.set(item.id ?? "", block);
-          yield { type: "block-start", index: block.index, blockType: "reasoning" };
+          yield* blocks.openReasoning();
         }
         break;
       }
       case "response.content_part.added": {
-        // Open the text block lazily and exactly once. Emitting block-start only
-        // when no text block is open avoids both a missing block-start (when the
-        // first signal is output_text.delta) and a duplicate block-start (when
-        // content_part.added fires after a delta already opened the block).
-        if (event.part?.type === "output_text" && textBlock === void 0) {
-          textBlock = open("text");
-          yield { type: "block-start", index: textBlock.index, blockType: "text" };
-        }
+        // Open the text block exactly once. Emitting block-start only when no
+        // text block is open avoids both a missing block-start (first signal is
+        // output_text.delta) and a duplicate (content_part.added after a delta).
+        if (event.part?.type === "output_text") yield* blocks.openText();
         break;
       }
       case "response.output_text.delta": {
-        // Some Copilot endpoints stream output_text.delta without a preceding
-        // content_part.added. Lazily open + start the text block here so the
-        // delta always addresses an open block (else the harness stream
-        // invariant throws "text delta requires an open text block").
-        if (textBlock === void 0) {
-          textBlock = open("text");
-          yield { type: "block-start", index: textBlock.index, blockType: "text" };
-        }
-        textBlock.text += event.delta ?? "";
-        yield { type: "text-delta", index: textBlock.index, text: event.delta ?? "" };
+        // Some Copilot endpoints stream deltas without a preceding
+        // content_part.added; text() lazily opens so the delta always addresses
+        // an open block.
+        yield* blocks.text(event.delta ?? "");
         break;
       }
       case "response.reasoning_summary_part.added": {
-        // A reasoning item may contain multiple summary parts. Insert a blank
-        // line between parts so distinct summary paragraphs stay separated in
-        // the Think block. The first part (empty block) needs no separator.
-        if (reasoningBlock !== void 0 && reasoningBlock.text.length > 0) {
-          reasoningBlock.text += "\n\n";
-          yield { type: "reasoning-delta", index: reasoningBlock.index, text: "\n\n" };
-        }
+        // A reasoning item may contain multiple summary parts. Separate distinct
+        // paragraphs with a blank line. The first part (empty block) needs none.
+        if (!blocks.reasoningIsEmpty) yield* blocks.reasoning("\n\n");
         break;
       }
-      // GitHub Copilot's gpt-5.x (e.g. gpt-5.6 "luna") streams raw reasoning as
-      // `response.reasoning_text.delta` rather than the summary variant. Handle
-      // BOTH: without this the reasoning block is created (block-start /
-      // block-end) but never receives a reasoning-delta, so the Think block
-      // appears yet its content never updates. Lazily open the reasoning block
-      // so a delta arriving before output_item.added still streams.
+      // gpt-5.x (e.g. gpt-5.6 "luna") streams raw reasoning as
+      // `reasoning_text.delta` rather than the summary variant. Handle BOTH so
+      // the Think block receives content in either dialect; reasoning() lazily
+      // opens so a delta arriving before output_item.added still streams.
       case "response.reasoning_text.delta":
       case "response.reasoning_summary_text.delta": {
-        if (reasoningBlock === void 0) {
-          reasoningBlock = open("reasoning");
-          yield { type: "block-start", index: reasoningBlock.index, blockType: "reasoning" };
-        }
-        reasoningBlock.text += event.delta ?? "";
-        yield { type: "reasoning-delta", index: reasoningBlock.index, text: event.delta ?? "" };
+        yield* blocks.reasoning(event.delta ?? "");
         break;
       }
-      // Some Copilot endpoints send the complete reasoning only on the terminal
-      // `.done` event (with the full string in `event.text`) and emit no
-      // deltas. Backfill so the Think block still shows substantive content.
+      // Some endpoints send the complete reasoning only on the terminal `.done`
+      // (full string in `event.text`) with no deltas. Backfill only when the
+      // reasoning block is still empty, so deltas already streamed win.
       case "response.reasoning_text.done":
       case "response.reasoning_summary_text.done": {
-        if (typeof event.text === "string" && event.text.length > 0) {
-          if (reasoningBlock === void 0) {
-            reasoningBlock = open("reasoning");
-            yield { type: "block-start", index: reasoningBlock.index, blockType: "reasoning" };
-          }
-          if (reasoningBlock.text.length === 0) {
-            reasoningBlock.text = event.text;
-            yield { type: "reasoning-delta", index: reasoningBlock.index, text: event.text };
-          }
+        if (typeof event.text === "string" && event.text.length > 0 && blocks.reasoningIsEmpty) {
+          yield* blocks.reasoning(event.text);
         }
         break;
       }
       case "response.function_call_arguments.delta": {
-        const block = toolBlock ?? order.find((b) => b.kind === "tool-call" && !b._closed);
-        if (block !== void 0) {
-          block.text += event.delta ?? "";
-          yield {
-            type: "tool-call-delta",
-            index: block.index,
-            id: CallId(block.callId ?? ""),
-            ...block.name !== void 0 ? { name: block.name } : {},
-            argumentsDelta: event.delta ?? ""
-          };
+        if (toolHandle === void 0) {
+          const opened = blocks.openToolCall();
+          toolHandle = opened.handle;
+          yield* opened.chunks;
         }
+        yield* blocks.toolArgs(toolHandle, event.delta ?? "");
         break;
       }
       case "response.function_call_arguments.done": {
-        // `arguments` here is "the final arguments as a JSON string" — the
-        // authoritative complete value.  The delta stream only forwards the
-        // opening/closing quotes on some Copilot endpoints, so this event (not
-        // the deltas) is what must populate the block's final arguments.
-        // Route by the tracked reference: the item_id here differs from the one
-        // in output_item.added, so a map lookup would miss.
-        const block = toolBlock ?? order.find((b) => b.kind === "tool-call" && !b._closed);
-        if (block !== void 0 && typeof event.arguments === "string" && event.arguments.length > 0) {
-          block.text = event.arguments;
-        }
+        // `arguments` here is the authoritative complete JSON string; the delta
+        // stream only forwards the opening/closing quotes on some endpoints.
+        if (toolHandle !== void 0) blocks.updateTool(toolHandle, { arguments: event.arguments });
         break;
       }
       case "response.output_item.done": {
         const item = event.item;
-        if (item?.type === "message" && textBlock !== void 0) {
-          textBlock._closed = true;
-          yield { type: "block-end", index: textBlock.index, block: { type: "text", text: textBlock.text } };
-          textBlock = void 0;
-        } else if (item?.type === "function_call") {
-          // Close by the tracked reference, NOT by item.id (which differs from
-          // output_item.added's id). item.arguments here is the authoritative
-          // complete JSON string; prefer it, else keep what .done captured.
-          const block = toolBlock ?? order.find((b) => b.kind === "tool-call" && !b._closed);
-          if (block !== void 0) {
-            if (typeof item.name === "string") block.name = item.name;
-            if (typeof item.call_id === "string") block.callId = item.call_id;
-            // Only overwrite with a non-empty value: an empty/absent `arguments`
-            // here must not clobber arguments already captured from
-            // `response.function_call_arguments.done` (or the delta stream).
-            if (typeof item.arguments === "string" && item.arguments.length > 0) block.text = item.arguments;
-            block._closed = true;
-            yield { type: "block-end", index: block.index, block: close(block) };
-            if (toolBlock === block) toolBlock = void 0;
-            toolBlocks.delete(item.id ?? "");
-          }
+        if (item?.type === "message") {
+          yield* blocks.closeText();
+        } else if (item?.type === "function_call" && toolHandle !== void 0) {
+          // item.arguments here is the authoritative complete JSON string; an
+          // empty/absent value must not clobber args already captured.
+          blocks.updateTool(toolHandle, { name: item.name, callId: item.call_id, arguments: item.arguments });
+          yield* blocks.closeToolCall(toolHandle);
+          toolHandle = void 0;
         } else if (item?.type === "reasoning") {
-          // Close by the tracked reference, NOT by item.id: the id in this
-          // done event differs from the one in output_item.added, so a map
-          // lookup would miss and the reasoning block would never emit
-          // block-end — leaving the Think row stuck "streaming" forever and
-          // corrupting the next reasoning segment.
-          const block = reasoningBlock ?? order.find((b) => b.kind === "reasoning" && !b._closed);
-          if (block !== void 0) {
-            block._closed = true;
-            yield { type: "block-end", index: block.index, block: { type: "reasoning", text: block.text } };
-            if (reasoningBlock === block) reasoningBlock = void 0;
-            reasoningBlocks.delete(item.id ?? "");
-          }
+          yield* blocks.closeReasoning();
         }
         break;
       }
@@ -364,23 +265,9 @@ async function* translateResponses(payloads) {
       }
     }
   }
-  // Close any blocks that weren't closed by their done events (defensive).
-  for (const block of order) {
-    if (block._closed) continue;
-    block._closed = true;
-    yield { type: "block-end", index: block.index, block: close(block) };
-  }
-  // usage before finish — consistent with translate() and the harness consumer contract.
-  if (usage !== void 0) yield { type: "usage", usage };
-  if (failure !== void 0) yield { type: "finish", reason: failure };
-  else if (finishReason !== void 0 && order.length === 0) yield {
-    type: "finish",
-    reason: {
-      kind: "error",
-      failure: { message: "model returned a completed response with no content", code: EMPTY_RESPONSE_CODE }
-    }
-  };
-  else yield { type: "finish", reason: finishReason ?? { kind: "stop" } };
+  // BlockStream.finish flushes any still-open blocks (defensive), emits usage
+  // before finish, and applies the unified empty-response rule.
+  yield* blocks.finish({ usage, reason: finishReason, failure });
 }
 //#endregion
 
