@@ -113,17 +113,8 @@ var GitHubCopilotAdapter = class extends LlmAdapter {
   async *request(options, signal, connection) {
     const models = await this.config.catalog();
     const entry = models.find((candidate) => candidate.id === options.model);
-    const endpoints = entry?.endpoints;
-    // Prefer the Responses API whenever the model offers it. gpt-5.x models that
-    // advertise BOTH /responses and /chat/completions (gpt-5.4, gpt-5-mini) hide
-    // their reasoning on /chat/completions — the stream reports reasoning_tokens
-    // in usage but never streams the reasoning text, so the Think block stays
-    // empty. On /responses the same models emit reasoning_summary_text /
-    // reasoning_text deltas, so routing there restores live Think content and
-    // matches how the /responses-only gpt-5.x models already behave.
-    const useResponses = Array.isArray(endpoints) && endpoints.includes("/responses");
+    const protocol = selectProtocol(entry);
     const wire = wireReasoning(entry, options.reasoningEffort);
-    const supportsReasoning = reasoningMetadata(entry) !== void 0;
     // Image pre-flight: gate model capability and attachment-service presence
     // before doing any I/O. Text-only requests skip this entirely.
     const containsImage = options.messages.some((m) => contentHasImage(m.content));
@@ -145,9 +136,8 @@ var GitHubCopilotAdapter = class extends LlmAdapter {
       }
     }
     const imageResolver = createImageResolver(attachmentStore, entry, signal);
-    const body = useResponses ? await serializeResponsesRequest(options, wire, imageResolver, supportsReasoning) : await serializeRequest(options, wire, imageResolver);
+    const body = await protocol.serialize(options, wire, imageResolver);
     const payload = JSON.stringify(body);
-    const path = useResponses ? "/responses" : "/chat/completions";
     const headers = {
       authorization: `Bearer ${connection.apiToken}`,
       "content-type": "application/json",
@@ -163,7 +153,7 @@ var GitHubCopilotAdapter = class extends LlmAdapter {
     };
     let response;
     try {
-      response = await copilotFetch(`${connection.baseUrl}${path}`, {
+      response = await copilotFetch(`${connection.baseUrl}${protocol.path}`, {
         method: "POST",
         headers,
         body: payload,
@@ -189,9 +179,7 @@ var GitHubCopilotAdapter = class extends LlmAdapter {
       });
     }
     if (!response.body) throw new LlmError("GitHub Copilot API returned no response body", "EMPTY_RESPONSE");
-    yield* useResponses
-      ? translateResponses(traceSse(parseSse(response.body, false), "responses"))
-      : translate(traceSse(parseSse(response.body), "chat"));
+    yield* protocol.translate(response.body);
   }
 };
 //#endregion
