@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
+## [0.3.10] - 2026-08-19
+
+### Fixed
+
+- **Model picker: eliminate duplicate display names (GPT-4o × 4, GPT 4 × 2, …)**
+  The GitHub Copilot API returns ~42 models, including legacy versioned
+  snapshots (`gpt-4o-2024-08-06`, `gpt-4o-2024-11-20`, `gpt-4-0613`, …) that
+  GitHub's own clients hide via `model_picker_enabled: false`. These caused
+  multiple entries with identical display names to appear in the DSH model
+  picker. `isServedByAdapter()` now skips any model where
+  `model_picker_enabled` is explicitly `false`; absent/`true` is treated as
+  enabled for forward compatibility. Result: 42 raw models → 24 shown, zero
+  duplicate names.
+
 ## [0.3.9] - 2026-08-19
 
 ### Added
