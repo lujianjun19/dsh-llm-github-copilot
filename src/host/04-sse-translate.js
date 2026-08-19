@@ -8,6 +8,53 @@ async function* parseSse(stream, requireDone = true) {
   }
   if (requireDone) throw new LlmError("SSE stream ended without [DONE]", "STREAM_CLOSED");
 }
+/**
+ * Optional diagnostic tap. When the environment variable DSH_COPILOT_TRACE is
+ * truthy, log a one-line summary of every SSE payload to stderr, then re-yield
+ * it unchanged. Understands BOTH wire formats:
+ *   - Responses API events  (payload has `type`, optional `item`/`delta`/`text`)
+ *   - chat-completions chunks (payload has `choices[].delta` with
+ *     content / reasoning_content / reasoning_text / reasoning / tool_calls)
+ * Off by default — zero overhead and no output in normal operation. Used to see
+ * exactly which reasoning fields/events a given model emits so a missing Think
+ * block can be diagnosed empirically instead of guessed at.
+ */
+async function* traceSse(payloads, label) {
+  const on = (() => { try { return !!globalThis.process?.env?.DSH_COPILOT_TRACE; } catch { return false; } })();
+  if (!on) { yield* payloads; return; }
+  const log = (m) => { try { globalThis.process?.stderr?.write(`[copilot-trace ${label}] ${m}\n`); } catch {} };
+  const len = (v) => typeof v === "string" ? `${v.length}b` : "-";
+  for await (const payload of payloads) {
+    if (payload === "[DONE]") { log("[DONE]"); yield payload; continue; }
+    try {
+      const e = JSON.parse(payload);
+      if (typeof e.type === "string") {
+        // Responses API event.
+        const it = e.item?.type ? ` item=${e.item.type}` : "";
+        const d = typeof e.delta === "string" ? ` delta=${len(e.delta)}` : "";
+        const t = typeof e.text === "string" ? ` text=${len(e.text)}` : "";
+        log(`${e.type}${it}${d}${t}`);
+      } else if (Array.isArray(e.choices)) {
+        // chat-completions chunk.
+        for (const c of e.choices) {
+          const d = c.delta ?? {};
+          const fields = [];
+          if (typeof d.content === "string" && d.content.length) fields.push(`content=${len(d.content)}`);
+          if (typeof d.reasoning_content === "string") fields.push(`reasoning_content=${len(d.reasoning_content)}`);
+          if (typeof d.reasoning_text === "string") fields.push(`reasoning_text=${len(d.reasoning_text)}`);
+          if (typeof d.reasoning === "string") fields.push(`reasoning=${len(d.reasoning)}`);
+          if (Array.isArray(d.tool_calls)) fields.push(`tool_calls=${d.tool_calls.length}`);
+          if (c.finish_reason) fields.push(`finish=${c.finish_reason}`);
+          log(`chunk keys=[${Object.keys(d).join(",")}]${fields.length ? " " + fields.join(" ") : ""}`);
+        }
+        if (e.usage) log(`usage ${JSON.stringify(e.usage)}`);
+      } else {
+        log(`<unknown payload keys=[${Object.keys(e).join(",")}]>`);
+      }
+    } catch { log("<unparseable payload>"); }
+    yield payload;
+  }
+}
 function mapFinishReason(reason) {
   switch (reason) {
     case "stop": return { kind: "stop" };

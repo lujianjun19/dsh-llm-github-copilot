@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The project follows Sem
 
 ### Fixed
 
+- **gpt-5.x dual-endpoint models (gpt-5.4, gpt-5-mini): empty Think block — reasoning hidden on `/chat/completions`**
+
+  Models that advertise BOTH `/responses` and `/chat/completions` (currently
+  `gpt-5.4` and `gpt-5-mini`) were routed to `/chat/completions`, where GitHub
+  Copilot does **not** stream the reasoning text — the response reports
+  `reasoning_tokens` in usage (e.g. 1792) but emits zero `reasoning_text`
+  chunks, so the Think block stayed empty even though the model reasoned
+  heavily. The `/responses`-only gpt-5.x models (gpt-5.4-mini, gpt-5.5,
+  gpt-5.6-*) were unaffected because they already used the Responses API.
+
+  **Fix:** the adapter now prefers `/responses` whenever a model offers it
+  (`useResponses = endpoints.includes("/responses")`), instead of only when
+  `/chat/completions` is absent. Verified at the wire level: on `/responses`
+  with `reasoning.summary: "detailed"`, gpt-5.4 streamed 475 B of reasoning
+  (87 deltas) and gpt-5-mini 1344 B (280 deltas across 3 summary parts) — both
+  now drive a live Think block exactly like gpt-5.6-luna. Chat-only models
+  (kimi-k3, gpt-4o, gemini-*) are unchanged.
+
+  A diagnostic tap (`traceSse`, gated behind the `DSH_COPILOT_TRACE`
+  environment variable) was added to log the reasoning events/fields each model
+  emits on both wire formats; it produces no output and has zero overhead when
+  the variable is unset.
+
 - **Responses API (gpt-5.x, e.g. gpt-5.6 "luna"): Think block appeared but never updated + a stream-invariant error**
 
   Two distinct bugs in `translateResponses()`:
