@@ -15,7 +15,8 @@
       models: { margin: 0, paddingLeft: 20, columns: 2, columnGap: 28, fontSize: 14, lineHeight: "22px", color: "var(--dsw-alias-label-primary)" },
       model: { breakInside: "avoid" },
       modalBody: { display: "flex", flexDirection: "column", gap: 14 },
-      codeRow: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }
+      codeRow: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" },
+      versionLink: { color: "var(--dsw-alias-brand-primary)" }
     };
 
     async function request(path, method = "GET") {

@@ -1,5 +1,6 @@
     const API = "/github-copilot-auth";
     const NS = "github-copilot";
+    const PLUGIN_VERSION = "__PLUGIN_VERSION__";
     const EN = {
       nav: "GitHub Copilot",
       title: "GitHub Copilot",
@@ -22,6 +23,7 @@
       models: "Available models: {count}",
       noModels: "No dynamic models are available. Confirm that your account is signed in and the Copilot API is reachable.",
       commandHint: "The /copilot-login, /copilot-status, and /copilot-logout commands remain available on chat surfaces.",
+      pluginVersion: "Plugin version:",
       loginDialogTitle: "Sign in to GitHub Copilot",
       loginDialogDescription: "Open the GitHub device page, then enter the device code below.",
       openGitHub: "Open GitHub",
@@ -59,6 +61,7 @@
       models: "可用模型：{count}",
       noModels: "当前没有可用的动态模型。请确认账号已经登录，并且能够访问 Copilot API。",
       commandHint: "聊天界面仍可使用 /copilot-login、/copilot-status 和 /copilot-logout。",
+      pluginVersion: "插件版本：",
       loginDialogTitle: "登录 GitHub Copilot",
       loginDialogDescription: "打开 GitHub 设备登录页面，然后输入下面的设备码。",
       openGitHub: "打开 GitHub",
