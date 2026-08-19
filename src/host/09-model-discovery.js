@@ -1,6 +1,13 @@
 //#region model discovery
 /** Whether a Copilot model is served by an endpoint this adapter speaks (/chat/completions or /responses). */
 function isServedByAdapter(raw) {
+  // GitHub Copilot's own clients (VS Code, etc.) hide models where
+  // model_picker_enabled is explicitly false — these are legacy versioned
+  // snapshots (e.g. gpt-4o-2024-08-06) that share a display name with the
+  // canonical alias (gpt-4o) and are the direct cause of duplicate entries in
+  // the DSH model picker.  Absent means the field is not yet declared, which
+  // we treat as enabled to stay forward-compatible.
+  if (raw?.model_picker_enabled === false) return false;
   // Non-chat capabilities (e.g. embeddings) are never served by either endpoint.
   const type = raw?.capabilities?.type;
   if (type !== void 0 && type !== "chat") return false;
