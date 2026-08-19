@@ -224,3 +224,17 @@ Expected output for every check: version matches the released tag, `id` is
 - Prefer existing Harness services, slots, UI primitives, locale, credentials, settings, attachments, and model invalidation events.
 - Do not patch DeepSeek Harness core from this repository.
 - Browser UI must use Harness primitives/tokens and support English/Chinese with English fallback.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues (`gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-label vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout — one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
