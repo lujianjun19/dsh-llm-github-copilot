@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
+## [0.3.9] - 2026-08-19
+
+### Added
+
+- **Settings › GitHub Copilot tab: plugin version display**
+  The bottom of the GitHub Copilot settings panel now shows the installed plugin
+  version as a `Plugin version:` / `插件版本：` label followed by a clickable
+  `@lujianjun19/dsh-llm-github-copilot vX.Y.Z` link that opens the corresponding
+  GitHub Releases tag page. The version is injected at build time from
+  `package.json` — no runtime API calls are needed.
+
 ## [0.3.8] - 2026-08-19
 
 ### Changed
