@@ -2,6 +2,25 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
+## [0.3.8] - 2026-08-19
+
+### Changed
+
+- Extracted `BlockStream` reducer shared by both SSE translators; eliminates
+  duplicate block-accumulator logic between the chat-completions and Responses
+  API paths. `BlockStream` and `translate` are now exported for direct testing.
+- Introduced `WireProtocol` seam (`chatProtocol` / `responsesProtocol` /
+  `selectProtocol`) in `07-wire-protocol.js`; the three independent
+  `useResponses` ternaries in `request()` are replaced by a single protocol
+  object.
+- Centralized chat-completions reasoning-field names in `chatReasoningFrom()`;
+  `translate()` and `traceSse()` now share a single field list.
+- Unified empty-response rule across both wire formats; error-kind finish
+  reasons from the chat path now preserve their specific error message.
+- Fixed reverse fragment dependency: `reasoningMetadata` / `wireReasoning`
+  moved from `08-adapter.js` to `07-wire-protocol.js` so dependency direction
+  matches file ordering.
+
 ## [0.3.7] - 2026-08-19
 
 ### Fixed
