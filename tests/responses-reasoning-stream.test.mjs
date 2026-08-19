@@ -112,3 +112,65 @@ test('multiple summary parts are separated by a blank line', async () => {
   assert.equal(ends.length, 1)
   assert.equal(ends[0].block.text, 'Part one\n\nPart two')
 })
+
+// GitHub Copilot's gpt-5.x (e.g. gpt-5.6 "luna") streams RAW reasoning via
+// `response.reasoning_text.delta`, not the summary variant. Before the fix the
+// reasoning block was created (block-start/block-end) but received no delta, so
+// the Think block appeared but never updated ("not dynamically changing").
+const RAW_REASONING = [
+  { type: 'response.output_item.added', item: { type: 'reasoning', id: 'r_add' } },
+  { type: 'response.reasoning_text.delta', item_id: 'd1', delta: 'Let me' },
+  { type: 'response.reasoning_text.delta', item_id: 'd2', delta: ' reason' },
+  { type: 'response.reasoning_text.done', item_id: 'd3', text: 'Let me reason' },
+  { type: 'response.output_item.done', item: { type: 'reasoning', id: 'r_done' } },
+  { type: 'response.output_item.added', item: { type: 'message', id: 'm' } },
+  { type: 'response.content_part.added', part: { type: 'output_text' } },
+  { type: 'response.output_text.delta', delta: 'answer' },
+  { type: 'response.output_item.done', item: { type: 'message', id: 'm' } },
+  { type: 'response.completed', response: { usage: {} } },
+]
+
+test('raw reasoning_text.delta streams into the reasoning block', async () => {
+  const chunks = await collect(RAW_REASONING)
+  const deltas = chunks.filter((c) => c.type === 'reasoning-delta').map((c) => c.text)
+  assert.deepEqual(deltas, ['Let me', ' reason'])
+  const end = chunks.filter((c) => c.type === 'block-end' && c.block.type === 'reasoning')
+  assert.equal(end.length, 1)
+  assert.equal(end[0].block.text, 'Let me reason')
+})
+
+// Some endpoints send the complete reasoning ONLY on `.done` (no deltas). The
+// translator must backfill so the Think block is not left empty.
+const DONE_ONLY_REASONING = [
+  { type: 'response.output_item.added', item: { type: 'reasoning', id: 'r_add' } },
+  { type: 'response.reasoning_text.done', item_id: 'd', text: 'Complete thought' },
+  { type: 'response.output_item.done', item: { type: 'reasoning', id: 'r_done' } },
+  { type: 'response.completed', response: { usage: {} } },
+]
+
+test('reasoning_text.done backfills when no deltas were streamed', async () => {
+  const chunks = await collect(DONE_ONLY_REASONING)
+  const end = chunks.filter((c) => c.type === 'block-end' && c.block.type === 'reasoning')
+  assert.equal(end.length, 1)
+  assert.equal(end[0].block.text, 'Complete thought')
+})
+
+// A stream that emits output_text.delta WITHOUT a preceding content_part.added
+// must still produce a valid block-start → text-delta → block-end sequence
+// (the harness stream invariant rejects a delta on a block with no block-start).
+const TEXT_NO_PART = [
+  { type: 'response.output_item.added', item: { type: 'message', id: 'm' } },
+  { type: 'response.output_text.delta', delta: 'Hello' },
+  { type: 'response.output_item.done', item: { type: 'message', id: 'm' } },
+  { type: 'response.completed', response: { usage: {} } },
+]
+
+test('output_text.delta without content_part.added still opens the text block', async () => {
+  const chunks = await collect(TEXT_NO_PART)
+  const start = chunks.findIndex((c) => c.type === 'block-start' && c.blockType === 'text')
+  const delta = chunks.findIndex((c) => c.type === 'text-delta')
+  const end = chunks.findIndex((c) => c.type === 'block-end' && c.block.type === 'text')
+  assert.ok(start >= 0, 'text block-start emitted')
+  assert.ok(delta > start, 'text-delta follows block-start')
+  assert.ok(end > delta, 'block-end follows text-delta')
+})

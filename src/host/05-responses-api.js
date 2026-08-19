@@ -178,10 +178,7 @@ async function* translateResponses(payloads) {
       };
     }
   };
-  const ensureText = () => {
-    if (textBlock === void 0) textBlock = open("text");
-    return textBlock;
-  };
+
   for await (const payload of payloads) {
     if (payload === "[DONE]") break;
     let event;
@@ -209,38 +206,69 @@ async function* translateResponses(payloads) {
         break;
       }
       case "response.content_part.added": {
-        if (event.part?.type === "output_text") {
-          const block = ensureText();
-          yield { type: "block-start", index: block.index, blockType: "text" };
+        // Open the text block lazily and exactly once. Emitting block-start only
+        // when no text block is open avoids both a missing block-start (when the
+        // first signal is output_text.delta) and a duplicate block-start (when
+        // content_part.added fires after a delta already opened the block).
+        if (event.part?.type === "output_text" && textBlock === void 0) {
+          textBlock = open("text");
+          yield { type: "block-start", index: textBlock.index, blockType: "text" };
         }
         break;
       }
       case "response.output_text.delta": {
-        const block = ensureText();
-        block.text += event.delta ?? "";
-        yield { type: "text-delta", index: block.index, text: event.delta ?? "" };
+        // Some Copilot endpoints stream output_text.delta without a preceding
+        // content_part.added. Lazily open + start the text block here so the
+        // delta always addresses an open block (else the harness stream
+        // invariant throws "text delta requires an open text block").
+        if (textBlock === void 0) {
+          textBlock = open("text");
+          yield { type: "block-start", index: textBlock.index, blockType: "text" };
+        }
+        textBlock.text += event.delta ?? "";
+        yield { type: "text-delta", index: textBlock.index, text: event.delta ?? "" };
         break;
       }
       case "response.reasoning_summary_part.added": {
         // A reasoning item may contain multiple summary parts. Insert a blank
         // line between parts so distinct summary paragraphs stay separated in
         // the Think block. The first part (empty block) needs no separator.
-        const block = reasoningBlock ?? order.find((b) => b.kind === "reasoning" && !b._closed);
-        if (block !== void 0 && block.text.length > 0) {
-          block.text += "\n\n";
-          yield { type: "reasoning-delta", index: block.index, text: "\n\n" };
+        if (reasoningBlock !== void 0 && reasoningBlock.text.length > 0) {
+          reasoningBlock.text += "\n\n";
+          yield { type: "reasoning-delta", index: reasoningBlock.index, text: "\n\n" };
         }
         break;
       }
+      // GitHub Copilot's gpt-5.x (e.g. gpt-5.6 "luna") streams raw reasoning as
+      // `response.reasoning_text.delta` rather than the summary variant. Handle
+      // BOTH: without this the reasoning block is created (block-start /
+      // block-end) but never receives a reasoning-delta, so the Think block
+      // appears yet its content never updates. Lazily open the reasoning block
+      // so a delta arriving before output_item.added still streams.
+      case "response.reasoning_text.delta":
       case "response.reasoning_summary_text.delta": {
-        // Route by the current open reasoning block, NOT by event.item_id:
-        // Copilot's gpt-5.x stream gives every event a distinct opaque id, so a
-        // map lookup on item_id never hits. Fall back to the last open reasoning
-        // block for resilience.
-        const block = reasoningBlock ?? order.find((b) => b.kind === "reasoning" && !b._closed);
-        if (block !== void 0) {
-          block.text += event.delta ?? "";
-          yield { type: "reasoning-delta", index: block.index, text: event.delta ?? "" };
+        if (reasoningBlock === void 0) {
+          reasoningBlock = open("reasoning");
+          yield { type: "block-start", index: reasoningBlock.index, blockType: "reasoning" };
+        }
+        reasoningBlock.text += event.delta ?? "";
+        yield { type: "reasoning-delta", index: reasoningBlock.index, text: event.delta ?? "" };
+        break;
+      }
+      // Some Copilot endpoints send the complete reasoning only on the terminal
+      // `.done` event (with the full string in `event.text`) and emit no
+      // deltas. Backfill so the Think block still shows substantive content.
+      case "response.reasoning_text.done":
+      case "response.reasoning_summary_text.done": {
+        if (typeof event.text === "string" && event.text.length > 0) {
+          if (reasoningBlock === void 0) {
+            reasoningBlock = open("reasoning");
+            yield { type: "block-start", index: reasoningBlock.index, blockType: "reasoning" };
+          }
+          if (reasoningBlock.text.length === 0) {
+            reasoningBlock.text = event.text;
+            yield { type: "reasoning-delta", index: reasoningBlock.index, text: event.text };
+          }
         }
         break;
       }

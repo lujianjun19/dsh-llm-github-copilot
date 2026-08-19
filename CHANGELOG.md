@@ -4,6 +4,36 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+### Fixed
+
+- **Responses API (gpt-5.x, e.g. gpt-5.6 "luna"): Think block appeared but never updated + a stream-invariant error**
+
+  Two distinct bugs in `translateResponses()`:
+
+  1. **Think content "not dynamically changing".** GitHub Copilot's gpt-5.x
+     `/responses` stream delivers raw reasoning as
+     `response.reasoning_text.delta` (the same `reasoning_text` field naming
+     already recognised for chat-completions in the Claude fix), *not* the
+     `response.reasoning_summary_text.delta` variant the translator handled.
+     The reasoning block was therefore opened (`block-start`) and closed
+     (`block-end`) with **zero** `reasoning-delta` chunks in between — the Think
+     row rendered but its content never streamed. The translator now handles
+     `response.reasoning_text.delta`/`.done` alongside the summary events, and
+     backfills from the terminal `.done` text when an endpoint sends no deltas.
+
+  2. **Stream-invariant error on text output.** When a `response.output_text.delta`
+     arrived without a preceding `response.content_part.added`, the old
+     `ensureText()` opened a text block but emitted no `block-start`, so the
+     following `text-delta` addressed a block the harness never saw open. The
+     `@deepseek-ai/dsh-llm` stream invariant rejected it
+     (`text delta ... requires an open text block`), throwing an `InvariantError`
+     that surfaced as an error message and aborted the stream. Text block-start
+     is now emitted lazily and exactly once from whichever event opens the block.
+
+  New regression tests in `tests/responses-reasoning-stream.test.mjs` cover raw
+  `reasoning_text` streaming, `.done`-only backfill, and the missing
+  `content_part.added` case.
+
 ## [0.3.12] - 2026-08-18
 
 ### Fixed
