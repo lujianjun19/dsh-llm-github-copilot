@@ -4,6 +4,159 @@ All notable changes to this project are documented here. The project follows Sem
 
 ## [Unreleased]
 
+### Fixed
+
+- **gpt-5.x dual-endpoint models (gpt-5.4, gpt-5-mini): empty Think block — reasoning hidden on `/chat/completions`**
+
+  Models that advertise BOTH `/responses` and `/chat/completions` (currently
+  `gpt-5.4` and `gpt-5-mini`) were routed to `/chat/completions`, where GitHub
+  Copilot does **not** stream the reasoning text — the response reports
+  `reasoning_tokens` in usage (e.g. 1792) but emits zero `reasoning_text`
+  chunks, so the Think block stayed empty even though the model reasoned
+  heavily. The `/responses`-only gpt-5.x models (gpt-5.4-mini, gpt-5.5,
+  gpt-5.6-*) were unaffected because they already used the Responses API.
+
+  **Fix:** the adapter now prefers `/responses` whenever a model offers it
+  (`useResponses = endpoints.includes("/responses")`), instead of only when
+  `/chat/completions` is absent. Verified at the wire level: on `/responses`
+  with `reasoning.summary: "detailed"`, gpt-5.4 streamed 475 B of reasoning
+  (87 deltas) and gpt-5-mini 1344 B (280 deltas across 3 summary parts) — both
+  now drive a live Think block exactly like gpt-5.6-luna. Chat-only models
+  (kimi-k3, gpt-4o, gemini-*) are unchanged.
+
+  A diagnostic tap (`traceSse`, gated behind the `DSH_COPILOT_TRACE`
+  environment variable) was added to log the reasoning events/fields each model
+  emits on both wire formats; it produces no output and has zero overhead when
+  the variable is unset.
+
+- **Responses API (gpt-5.x, e.g. gpt-5.6 "luna"): Think block appeared but never updated + a stream-invariant error**
+
+  Two distinct bugs in `translateResponses()`:
+
+  1. **Think content "not dynamically changing".** GitHub Copilot's gpt-5.x
+     `/responses` stream delivers raw reasoning as
+     `response.reasoning_text.delta` (the same `reasoning_text` field naming
+     already recognised for chat-completions in the Claude fix), *not* the
+     `response.reasoning_summary_text.delta` variant the translator handled.
+     The reasoning block was therefore opened (`block-start`) and closed
+     (`block-end`) with **zero** `reasoning-delta` chunks in between — the Think
+     row rendered but its content never streamed. The translator now handles
+     `response.reasoning_text.delta`/`.done` alongside the summary events, and
+     backfills from the terminal `.done` text when an endpoint sends no deltas.
+
+  2. **Stream-invariant error on text output.** When a `response.output_text.delta`
+     arrived without a preceding `response.content_part.added`, the old
+     `ensureText()` opened a text block but emitted no `block-start`, so the
+     following `text-delta` addressed a block the harness never saw open. The
+     `@deepseek-ai/dsh-llm` stream invariant rejected it
+     (`text delta ... requires an open text block`), throwing an `InvariantError`
+     that surfaced as an error message and aborted the stream. Text block-start
+     is now emitted lazily and exactly once from whichever event opens the block.
+
+  New regression tests in `tests/responses-reasoning-stream.test.mjs` cover raw
+  `reasoning_text` streaming, `.done`-only backfill, and the missing
+  `content_part.added` case.
+
+## [0.3.12] - 2026-08-18
+
+### Fixed
+
+- **Responses API (gpt-5.x): tool-call arguments dropped → `presenter failed for tool/call: Unexpected end of JSON input`**
+
+  Same opaque-`item_id` mismatch as the reasoning bug, but for tool calls:
+  gpt-5.x assigns a **different** id to `output_item.added`,
+  `function_call_arguments.delta`, `function_call_arguments.done`, and
+  `output_item.done`. Matching the tool-call block by `toolBlocks.get(item_id)`
+  never hit, so **every argument delta was dropped** and the block's `arguments`
+  stayed empty. The client then did `JSON.parse("")`, throwing
+  `Unexpected end of JSON input` and falling back to a generic card
+  (`api-proxy: presenter failed for tool/call`).
+
+  **Fix:** `translateResponses()` now tracks the current open tool-call block by
+  reference (`toolBlock`) and routes argument deltas / `.done` / close through it
+  instead of the mismatched id. Verified against the live stream: the
+  authoritative complete arguments arrive on `function_call_arguments.done` and
+  `output_item.done`, both now correctly applied. New file
+  `tests/responses-toolcall-stream.test.mjs` adds 4 regression tests.
+
+## [0.3.11] - 2026-08-18
+
+### Changed
+
+- **Responses API (gpt-5.x): use `reasoning.summary: "detailed"` instead of `"concise"`**
+
+  With `"concise"`, GitHub Copilot's gpt-5.x emits only a single one-line title
+  per reasoning step (e.g. `**Checking user input relevance**`, ~25-34 chars),
+  which made the Think block look like it was "stuck" after one short line even
+  though the block-start/delta/block-end cycle was completing correctly.
+  `"detailed"` yields multi-sentence summaries per step, so the Think block now
+  shows substantive reasoning content.
+
+  Diagnosed via event-stream tracing: each reasoning segment correctly produced
+  `block-start → reasoning-delta → block-end`; the perceived "stuck" state was
+  purely the one-line concise summary, not a streaming bug.
+
+## [0.3.10] - 2026-08-18
+
+### Fixed
+
+- **Responses API (gpt-5.x): Think block stuck after first segment — reasoning routed by mismatched opaque `item_id`**
+
+  GitHub Copilot's gpt-5.x (`/responses`) stream assigns a **different** opaque
+  `item_id` to every reasoning event: `output_item.added`,
+  `reasoning_summary_part.added`, `reasoning_summary_text.delta`, and
+  `output_item.done` each carry a distinct encrypted token. The translator
+  matched reasoning blocks by `reasoningBlocks.get(item_id)`, which therefore
+  never hit:
+
+  - `output_item.done` could not find the block, so `block-end` was never
+    emitted — the Think row stayed "streaming" forever (appeared stuck), and
+  - later reasoning segments fell back to the first still-open block via
+    `order.find`, corrupting multi-segment display.
+
+  **Fix:** `translateResponses()` now tracks the current open reasoning block by
+  reference (`reasoningBlock`) instead of by id. Reasoning items are sequential
+  and non-overlapping, so a single reference routes every delta and closes the
+  block reliably. Multiple summary parts within one item are separated by a
+  blank line. New file `tests/responses-reasoning-stream.test.mjs` adds 6
+  regression tests replaying the mismatched-id event pattern.
+
+  `translateResponses` is now exported from `lib/index.js` for testing.
+
+## [0.3.9] - 2026-08-18
+
+### Fixed
+
+- **Responses API (GPT-5.x): Think block never appeared — missing `summary` field**
+
+  The Responses API only emits `response.reasoning_summary_text.delta` streaming
+  events when the request includes `reasoning.summary`. Without it the stream
+  carries no reasoning content regardless of effort level, so the Think block
+  never appeared in the UI.
+
+  **Fix:** `serializeResponsesRequest()` now always includes
+  `reasoning: { summary: "concise" }` when the model declares reasoning
+  capability (`supportsReasoning`), even when no explicit effort is selected.
+  When an effort is selected it is included alongside `summary`.
+
+## [0.3.8] - 2026-08-18
+
+### Fixed
+
+- **Chat-completions: Claude `reasoning_text` delta field not recognised**
+
+  GitHub Copilot proxies Claude's thinking content using the field name
+  `reasoning_text` in streaming deltas, while the adapter only checked
+  `reasoning_content` and `reasoning`.  As a result no `reasoning-delta`
+  chunks were emitted and the Think block never appeared in the UI.
+
+  **Fix:** `translate()` in `04-sse-translate.js` now checks
+  `reasoning_text` as the second candidate (after `reasoning_content`,
+  before `reasoning`), matching the actual field name GitHub Copilot uses.
+
+  `serializeAssistant()` also serialises prior reasoning turns under both
+  `reasoning_content` and `reasoning_text` for round-trip compatibility.
+
 ## [0.3.7] - 2026-08-18
 
 ### Fixed
