@@ -43,6 +43,26 @@ allowBuilds:
 dsh web
 ```
 
+## 更新
+
+DSH profile 内部使用 pnpm 管理依赖，其 lockfile 会锁定已安装的精确版本。单独重新运行 `dsh plugin add` 不一定能升级到最新版本。请使用以下任一命令（在任意目录执行均可）：
+
+```sh
+# 使用 npm（最简单，无需额外参数）
+npm install --prefix ~/.dsh/profiles/web @lujianjun19/dsh-llm-github-copilot@latest
+
+# 使用 pnpm
+pnpm add --dir ~/.dsh/profiles/web @lujianjun19/dsh-llm-github-copilot@latest --no-frozen-lockfile
+```
+
+然后重启 DSH：
+
+```sh
+dsh web
+```
+
+如需确认当前安装版本，在浏览器中打开 **设置 → GitHub Copilot**，版本号显示在页面底部。
+
 ## 登录
 
 在 Harness 对话框中运行登录命令：

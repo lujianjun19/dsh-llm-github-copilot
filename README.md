@@ -43,6 +43,26 @@ Restart DSH to activate:
 dsh web
 ```
 
+## Update
+
+The DSH profile uses pnpm internally, and its lockfile pins the exact installed version. Re-running `dsh plugin add` alone may not pick up a newer release. Use either of the following commands from any directory:
+
+```sh
+# Using npm (simplest — no extra flags needed)
+npm install --prefix ~/.dsh/profiles/web @lujianjun19/dsh-llm-github-copilot@latest
+
+# Using pnpm
+pnpm add --dir ~/.dsh/profiles/web @lujianjun19/dsh-llm-github-copilot@latest --no-frozen-lockfile
+```
+
+Then restart DSH:
+
+```sh
+dsh web
+```
+
+To confirm the installed version, open **Settings → GitHub Copilot** in the Harness browser UI — the version number is shown at the bottom of the panel.
+
 ## Sign in
 
 Run the login command inside the Harness chat:
