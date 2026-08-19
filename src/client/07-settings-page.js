@@ -126,6 +126,20 @@
             ]
           }),
           jsx("p", { style: css.hint, children: text("commandHint") }),
+          jsxs("p", {
+            style: css.hint,
+            children: [
+              text("pluginVersion"),
+              " ",
+              jsx("a", {
+                href: `https://github.com/lujianjun19/dsh-llm-github-copilot/releases/tag/v${PLUGIN_VERSION}`,
+                target: "_blank",
+                rel: "noreferrer",
+                style: css.versionLink,
+                children: `@lujianjun19/dsh-llm-github-copilot v${PLUGIN_VERSION}`
+              })
+            ]
+          }),
           jsx(RiskConfirmation, {
             open: confirmLogout,
             title: text("logoutConfirmTitle"),

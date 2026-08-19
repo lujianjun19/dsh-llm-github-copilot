@@ -6,6 +6,10 @@ import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
+// Build-time replacements applied to client bundle (mirrors scripts/build.mjs)
+const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
+const CLIENT_REPLACEMENTS = { '__PLUGIN_VERSION__': pkg.version }
+
 async function fragments(face) {
   const dir = join(root, 'src', face)
   const names = (await readdir(dir)).filter(name => name.endsWith('.js')).sort((a, b) => a.localeCompare(b, 'en'))
@@ -14,8 +18,14 @@ async function fragments(face) {
 }
 
 test('ordered source fragments exactly reproduce release artifacts', async () => {
-  for (const [face, artifact] of [['host', 'index.js'], ['client', 'client.js']]) {
-    const source = (await fragments(face)).map(value => value.text).join('')
+  for (const [face, artifact, replacements] of [
+    ['host', 'index.js', {}],
+    ['client', 'client.js', CLIENT_REPLACEMENTS]
+  ]) {
+    let source = (await fragments(face)).map(value => value.text).join('')
+    for (const [placeholder, value] of Object.entries(replacements)) {
+      source = source.replaceAll(placeholder, value)
+    }
     assert.equal(source, await readFile(join(root, 'lib', artifact), 'utf8'), face)
   }
 })
