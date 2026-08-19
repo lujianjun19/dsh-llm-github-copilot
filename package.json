@@ -85,6 +85,6 @@
     "pack:local": "node scripts/pack.mjs",
     "prepack": "npm run build && npm test",
     "preversion": "npm test && git diff --exit-code",
-    "version": "npm run build"
+    "version": "npm run build && git add lib/"
   }
 }
