@@ -131,12 +131,16 @@ function apply(ctx, config) {
   // external credentials-file edit), invalidate both token/catalog caches and
   // re-commit the adapter route. That emits llm/adapters-updated; every open
   // browser model directory then refetches session.models automatically.
-  ctx.on("credentials/updated", (ref) => {
+  const invalidateCatalog = (ref) => {
     if (ref !== options().oauthTokenEnv) return;
     exchangeCache = void 0;
     catalogCache = void 0;
     registration.replace([PROVIDER]);
-  });
+  };
+  // DeepSeek Harness currently emits credentials/reference-updated; retain
+  // credentials/updated for older runtimes and remote event forwarding.
+  ctx.on("credentials/reference-updated", invalidateCatalog);
+  ctx.on("credentials/updated", invalidateCatalog);
   let registeredPolicy = options().retryPolicy;
   const ensureRegistrationFacts = () => {
     const policy = options().retryPolicy;
