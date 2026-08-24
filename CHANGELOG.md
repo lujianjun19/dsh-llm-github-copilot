@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
-## [Unreleased]
+## [0.4.0] - 2026-08-24
 
 ### Changed
 
