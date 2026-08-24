@@ -43,6 +43,13 @@ const TOKEN_REFRESH_MARGIN_MS = 120000;
 /** How long a discovered model catalog is reused before re-interrogating the endpoint. */
 const CATALOG_TTL_MS = 300000;
 
+/**
+ * How long an empty/failed catalog is reused before retrying. Kept short so a
+ * re-login (or a transient discovery failure) recovers within seconds instead
+ * of leaving the model picker empty for the full positive TTL.
+ */
+const NEGATIVE_CATALOG_TTL_MS = 5000;
+
 /** Request-image overflow strategy applied when Provider/local limits are exceeded. */
 const DEFAULT_IMAGE_OVERFLOW_POLICY = "offload-oldest";
 

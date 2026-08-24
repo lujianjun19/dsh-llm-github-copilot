@@ -62,14 +62,14 @@ function apply(ctx, config) {
   const catalog = async () => {
     const configured = options().models;
     const cached = catalogCache;
-    if (cached !== void 0 && Date.now() < cached.at + CATALOG_TTL_MS) return cached.models;
+    if (cached !== void 0 && Date.now() < cached.at + cached.ttl) return cached.models;
     // Never advertise models that cannot be called. In particular, the old
     // DEFAULT_MODELS fallback made an unauthenticated provider look usable in
     // every model picker even though every request would fail MISSING_CREDENTIAL.
     const raw = await resolveRawOAuthToken();
     if (raw === void 0) {
       const models = [];
-      catalogCache = { at: Date.now(), models };
+      catalogCache = catalogCacheEntry(models, Date.now());
       return models;
     }
     try {
@@ -87,7 +87,7 @@ function apply(ctx, config) {
       if (!response.ok) throw new LlmError(`GitHub Copilot /models answered ${response.status}`, "DISCOVERY_FAILED");
       const discovered = readModelsListing(await response.json());
       if (discovered !== void 0) {
-        catalogCache = { at: Date.now(), models: discovered };
+        catalogCache = catalogCacheEntry(discovered, Date.now());
         return discovered;
       }
     } catch (error) {
@@ -98,7 +98,7 @@ function apply(ctx, config) {
     // that has a credential. Without an explicit catalog, failed token
     // exchange/discovery advertises no models rather than eight unusable ones.
     const fallback = configured.length > 0 ? configured : [];
-    catalogCache = { at: Date.now(), models: fallback };
+    catalogCache = catalogCacheEntry(fallback, Date.now());
     return fallback;
   };
   const resolveModel = async (provider, model) => {
@@ -207,6 +207,11 @@ function apply(ctx, config) {
           // commit; the listener above invalidates caches and refreshes every
           // open model directory before this flow settles authenticated.
           await storeRawOAuthToken(result.token);
+          // Belt-and-suspenders: clear the caches here too, so a re-login
+          // recovers the catalog even if the credentials/updated fan-out is
+          // missed or races the next model-directory poll.
+          exchangeCache = void 0;
+          catalogCache = void 0;
           finish("authenticated");
           ctx.logger.info(`${name}: GitHub Copilot sign-in completed; token stored as ${options().oauthTokenEnv}`);
         } catch (error) {
