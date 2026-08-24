@@ -3,7 +3,7 @@
 function flattenText(blocks) {
   return blocks.filter((block) => block.type === "text").map((block) => block.text).join("");
 }
-/** Reject image content in positions that do not support it (system/assistant/tool-result). */
+/** Reject image content in positions that do not support it (system/assistant). */
 function assertTextOnly(blocks, position) {
   if (contentHasImage(blocks)) throw new LlmError(`GitHub Copilot adapter does not support image content in ${position} messages.`, "UNSUPPORTED_CONTENT");
 }
@@ -12,6 +12,7 @@ function assertTextOnly(blocks, position) {
  * Pure-text content is returned as a plain string (preserving provider-cache
  * compatibility). Mixed or image-only content is returned as a content-part
  * array in OpenAI image_url format, preserving original block order.
+ * Each image block is preceded by its stable handle text part.
  */
 async function serializeChatUserContent(blocks, imageResolver) {
   const hasImage = blocks.some((b) => b.type === "image");
@@ -22,6 +23,8 @@ async function serializeChatUserContent(blocks, imageResolver) {
       if (block.text.length > 0) parts.push({ type: "text", text: block.text });
     } else if (block.type === "image") {
       const resolved = await imageResolver.resolve(block.attachment);
+      // Emit stable handle text BEFORE the image_url part.
+      if (resolved?.handle) parts.push({ type: "text", text: resolved.handle });
       parts.push({ type: "image_url", image_url: { url: resolved.dataUrl } });
     }
     // Reasoning and unknown block types are silently skipped for user content.
@@ -47,41 +50,94 @@ function serializeAssistant(message) {
     ...toolCalls.length > 0 ? { tool_calls: toolCalls } : {}
   };
 }
-/** Serialize the conversation into OpenAI-compatible wire messages. */
+/**
+ * Serialize the conversation into OpenAI-compatible wire messages.
+ *
+ * Tool-result images are not carried inside role:tool messages (the wire
+ * format does not support it). Instead, images from consecutive tool-result
+ * messages are accumulated and flushed as a single role:user message that
+ * immediately follows the run of role:tool messages.  Each image is preceded
+ * by a call-id marker and its stable handle text.
+ */
 async function serializeMessages(messages, imageResolver) {
   const wire = [];
+  // Buffer for images gathered from consecutive tool-result messages.
+  // [{ callId, handle?, imageUrl }]
+  let pendingToolImages = [];
+
+  /** Flush accumulated tool images as one user message. */
+  const flushToolImages = () => {
+    if (pendingToolImages.length === 0) return;
+    const content = [];
+    for (const { callId, handle, imageUrl } of pendingToolImages) {
+      content.push({ type: "text", text: `Image associated with tool call ${callId}:` });
+      if (handle) content.push({ type: "text", text: handle });
+      content.push({ type: "image_url", image_url: { url: imageUrl } });
+    }
+    wire.push({ role: "user", content });
+    pendingToolImages = [];
+  };
+
   for (const message of messages) {
     if (message.role === "system") {
+      flushToolImages();
       assertTextOnly(message.content, "system");
       wire.push({ role: "system", content: flattenText(message.content) });
       continue;
     }
     if (message.role === "assistant") {
+      flushToolImages();
       assertTextOnly(message.content, "assistant");
       wire.push(serializeAssistant(message));
       continue;
     }
-    // User messages: separate tool-result blocks from regular content.
+    // User messages: separate tool-result blocks from regular user content.
+    // A single harness message normally carries either tool-results
+    // (source.kind === "tool") or regular user content, not both. When it
+    // carries both, the role:tool wire messages are emitted before the
+    // role:user text so consecutive tool results stay grouped for the wire
+    // (tool messages must directly follow the assistant tool_calls); the
+    // pending tool images then flush after that grouped run.
     const toolResults = message.content.filter((block) => block.type === "tool-result");
-    // First version: reject images inside tool-result content.
-    for (const result of toolResults) {
-      if (contentHasImage(result.content)) {
-        throw new LlmError("GitHub Copilot adapter does not support image content in tool-result messages (first version).", "UNSUPPORTED_CONTENT");
+    const userBlocks = message.content.filter((block) => block.type !== "tool-result");
+
+    if (toolResults.length > 0) {
+      // Process each tool-result: text to role:tool, images to pending buffer.
+      for (const result of toolResults) {
+        wire.push({
+          role: "tool",
+          tool_call_id: result.toolCallId,
+          content: flattenText(result.content) || "(no output)"
+        });
+        // Collect images from tool-result content (including nested tool-results).
+        for (const block of result.content) {
+          if (block.type === "image") {
+            const resolved = await imageResolver.resolve(block.attachment);
+            pendingToolImages.push({
+              callId: result.toolCallId,
+              handle: resolved?.handle,
+              imageUrl: resolved.dataUrl
+            });
+          }
+        }
       }
     }
-    const userBlocks = message.content.filter((block) => block.type !== "tool-result");
+
+    // Emit regular user content (if any).
     const text = flattenText(userBlocks);
     const hasImages = userBlocks.some((b) => b.type === "image");
-    if (text.length > 0 || hasImages || toolResults.length === 0) {
+    if (userBlocks.length > 0 && (text.length > 0 || hasImages)) {
+      flushToolImages();
       const content = await serializeChatUserContent(userBlocks, imageResolver);
       wire.push({ role: "user", content });
+    } else if (toolResults.length === 0) {
+      // Pure user message with no content and no tool-results.
+      flushToolImages();
+      wire.push({ role: "user", content: "" });
     }
-    for (const result of toolResults) wire.push({
-      role: "tool",
-      tool_call_id: result.toolCallId,
-      content: flattenText(result.content) || "(no output)"
-    });
   }
+  // Flush any remaining tool images after the last message.
+  flushToolImages();
   return wire;
 }
 /** Build the full wire request body (always streaming, usage reporting on). */

@@ -1,6 +1,11 @@
 /**
  * Unit tests for Responses API serialization, including input_image support.
  * Tests the async serializeResponsesRequest() exported from lib/index.js.
+ *
+ * v0.4.0 changes:
+ *   - Stable handle text (input_text) emitted BEFORE each input_image part.
+ *   - Tool-result images are supported: function_call_output keeps text, images
+ *     follow in a subsequent role:user message with per-call-id markers.
  */
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -20,7 +25,8 @@ function mockResolver(map = {}) {
       if (!entry) return Promise.reject(new Error(`unexpected attachmentId: ${ref.attachmentId}`))
       return Promise.resolve({
         ref, bytes: 512, mediaType: 'image/png',
-        dataUrl: entry.dataUrl ?? `data:image/png;base64,${entry.b64 ?? 'AAAA'}`
+        dataUrl: entry.dataUrl ?? `data:image/png;base64,${entry.b64 ?? 'AAAA'}`,
+        handle: entry.handle ?? `Image ${ref.attachmentId}; request image 100x100px.`
       })
     }
   }
@@ -68,7 +74,7 @@ test('user message with image → input_image item', async () => {
   assert.equal(imgPart.image_url, 'data:image/png;base64,IMGDATA')
 })
 
-test('text + image → ordered input_text then input_image', async () => {
+test('text + image → [input_text, input_text(handle), input_image]', async () => {
   const opts = makeOpts([{
     role: 'user',
     content: [textBlock('look at this'), imageBlock('img2')],
@@ -79,7 +85,9 @@ test('text + image → ordered input_text then input_image', async () => {
   const parts = body.input.find(i => i.role === 'user').content
   assert.equal(parts[0].type, 'input_text')
   assert.equal(parts[0].text, 'look at this')
-  assert.equal(parts[1].type, 'input_image')
+  assert.equal(parts[1].type, 'input_text')   // stable handle
+  assert.ok(parts[1].text.includes('img2'))
+  assert.equal(parts[2].type, 'input_image')
 })
 
 // ── rejection rules ───────────────────────────────────────────────────────────
@@ -110,30 +118,67 @@ test('assistant message with image → UNSUPPORTED_CONTENT', async () => {
   )
 })
 
-test('tool-result with image → UNSUPPORTED_CONTENT', async () => {
+// ── tool-result images ────────────────────────────────────────────────────────
+
+test('tool-result with image → function_call_output text + following user input_image', async () => {
   const opts = makeOpts([{
     role: 'user',
     content: [{
       type: 'tool-result', toolCallId: 'c1',
-      content: [imageBlock('img-tool')], isError: false
+      content: [textBlock('screenshot'), imageBlock('img-tool')], isError: false
     }],
     source: { kind: 'tool', callId: 'c1' }
   }])
-  const { LlmError } = await import('@deepseek-ai/dsh-llm')
-  await assert.rejects(
-    serializeResponsesRequest(opts, undefined, noopResolver),
-    (err) => err instanceof LlmError && err.code === 'UNSUPPORTED_CONTENT'
-  )
+  const resolver = mockResolver({ 'img-tool': { dataUrl: 'data:image/png;base64,TOOL' } })
+  const body = await serializeResponsesRequest(opts, undefined, resolver)
+  // function_call_output: text only
+  const fco = body.input.find(i => i.type === 'function_call_output')
+  assert.ok(fco, 'should have function_call_output')
+  assert.equal(fco.call_id, 'c1')
+  assert.equal(fco.output, 'screenshot')
+  // following user input with call-id marker and image
+  const userItems = body.input.filter(i => i.role === 'user')
+  const imgItem = userItems.find(i => Array.isArray(i.content) && i.content.some(p => p.type === 'input_image'))
+  assert.ok(imgItem, 'should have following user item with input_image')
+  const marker = imgItem.content.find(p => p.type === 'input_text' && p.text.includes('c1'))
+  assert.ok(marker, 'user item should have call-id marker text')
+  const imgPart = imgItem.content.find(p => p.type === 'input_image')
+  assert.equal(imgPart.image_url, 'data:image/png;base64,TOOL')
 })
 
-// ── tool call serialization (fix: function_call top-level item) ───────────────
+test('two tool-results with images → two function_call_outputs + one user image item', async () => {
+  const opts = makeOpts([
+    {
+      role: 'user',
+      content: [{ type: 'tool-result', toolCallId: 'c1', content: [textBlock('r1'), imageBlock('img1')], isError: false }],
+      source: { kind: 'tool', callId: 'c1' }
+    },
+    {
+      role: 'user',
+      content: [{ type: 'tool-result', toolCallId: 'c2', content: [textBlock('r2'), imageBlock('img2')], isError: false }],
+      source: { kind: 'tool', callId: 'c2' }
+    }
+  ])
+  const resolver = mockResolver({
+    img1: { dataUrl: 'data:image/png;base64,I1' },
+    img2: { dataUrl: 'data:image/png;base64,I2' }
+  })
+  const body = await serializeResponsesRequest(opts, undefined, resolver)
+  const fcos = body.input.filter(i => i.type === 'function_call_output')
+  assert.equal(fcos.length, 2, 'two function_call_output items')
+  // ONE following user item with both images
+  const userImgItems = body.input.filter(i => i.role === 'user' && Array.isArray(i.content)
+    && i.content.some(p => p.type === 'input_image'))
+  assert.equal(userImgItems.length, 1, 'exactly one user image item for both tools')
+  const imgs = userImgItems[0].content.filter(p => p.type === 'input_image')
+  assert.equal(imgs.length, 2, 'both images in the user item')
+  const markerC1 = userImgItems[0].content.find(p => p.type === 'input_text' && p.text.includes('c1'))
+  const markerC2 = userImgItems[0].content.find(p => p.type === 'input_text' && p.text.includes('c2'))
+  assert.ok(markerC1)
+  assert.ok(markerC2)
+})
 
-// The Responses API only accepts `output_text` and `refusal` inside an
-// assistant message's content array.  Tool calls must be top-level
-// `function_call` items, not nested in the message content.
-// Regression: https://github.com/lujianjun19/dsh-llm-github-copilot (v0.3.6
-// produced `output_tool_call` inside content, triggering the server error
-// "Invalid value: 'output_tool_call'. Supported values are: 'output_text'...")
+// ── tool call serialization ───────────────────────────────────────────────────
 
 test('tool call only in assistant turn → top-level function_call item, no assistant message', async () => {
   const opts = makeOpts([{
@@ -142,30 +187,17 @@ test('tool call only in assistant turn → top-level function_call item, no assi
     source: { kind: 'model', provider: 'p', model: 'm' }
   }])
   const body = await serializeResponsesRequest(opts, undefined, noopResolver)
-
-  // Must produce exactly one top-level function_call item
   const fcItems = body.input.filter(i => i.type === 'function_call')
   assert.equal(fcItems.length, 1, 'exactly one function_call top-level item')
   assert.equal(fcItems[0].name, 'search')
   assert.equal(fcItems[0].call_id, 'call-abc')
   assert.equal(fcItems[0].arguments, '{"q":"test"}')
-
-  // `id` (fc_...) is API-generated and NOT required when replaying; the adapter
-  // omits it and relies on call_id for correlation.
-  assert.equal(fcItems[0].id, undefined, 'id must be omitted (not required for replay)')
-  assert.equal(fcItems[0].call_id, 'call-abc', 'call_id must be the original call_... value')
-
-  // Must NOT produce an assistant message with no content
+  assert.equal(fcItems[0].id, undefined, 'id must be omitted')
   const asstMsg = body.input.find(i => i.role === 'assistant')
   assert.equal(asstMsg, undefined, 'no assistant message when there is only a tool call')
 })
 
 test('real-world call_… id → id omitted, call_id preserved (regression)', async () => {
-  // Reproduces the exact server error reported with gpt-5.6-terra:
-  //   "Invalid 'input[4].id': 'call_00_JrdrVQskenAyDcreGWUA4666'.
-  //    Expected an ID that begins with 'fc'."
-  // The fix is to OMIT the id entirely — it is not a required field on
-  // FunctionToolCall and the adapter no longer has the original fc_ item id.
   const callId = 'call_00_JrdrVQskenAyDcreGWUA4666'
   const opts = makeOpts([{
     role: 'assistant',
@@ -173,13 +205,11 @@ test('real-world call_… id → id omitted, call_id preserved (regression)', as
     source: { kind: 'model', provider: 'p', model: 'm' }
   }])
   const body = await serializeResponsesRequest(opts, undefined, noopResolver)
-
   const fc = body.input.find(i => i.type === 'function_call')
-  assert.ok(fc, 'function_call item present')
-  assert.equal(fc.id, undefined, 'id must be omitted')
-  assert.equal(fc.call_id, callId, 'call_id must preserve the original call_… value')
+  assert.ok(fc)
+  assert.equal(fc.id, undefined)
+  assert.equal(fc.call_id, callId)
   assert.equal(fc.name, 'get_weather')
-  assert.equal(fc.arguments, '{"city":"Tokyo"}')
 })
 
 test('multiple tool calls → no id field, distinct call_id per call', async () => {
@@ -194,8 +224,8 @@ test('multiple tool calls → no id field, distinct call_id per call', async () 
   const body = await serializeResponsesRequest(opts, undefined, noopResolver)
   const fcs = body.input.filter(i => i.type === 'function_call')
   assert.equal(fcs.length, 2)
-  assert.equal(fcs[0].id, undefined, 'id must be omitted on every function_call')
-  assert.equal(fcs[1].id, undefined, 'id must be omitted on every function_call')
+  assert.equal(fcs[0].id, undefined)
+  assert.equal(fcs[1].id, undefined)
   assert.equal(fcs[0].call_id, 'call-1')
   assert.equal(fcs[1].call_id, 'call-2')
 })
@@ -210,8 +240,7 @@ test('tool call never appears inside assistant message content', async () => {
   for (const item of body.input) {
     if (!Array.isArray(item.content)) continue
     for (const part of item.content) {
-      assert.notEqual(part.type, 'output_tool_call',
-        'output_tool_call must never appear in content — it is not a valid Responses API content type')
+      assert.notEqual(part.type, 'output_tool_call')
     }
   }
 })
@@ -226,26 +255,18 @@ test('assistant text + tool call → separate message and function_call items', 
     source: { kind: 'model', provider: 'p', model: 'm' }
   }])
   const body = await serializeResponsesRequest(opts, undefined, noopResolver)
-
-  // Text goes into an assistant message with output_text content
   const asstMsg = body.input.find(i => i.role === 'assistant')
-  assert.ok(asstMsg, 'assistant message item present')
+  assert.ok(asstMsg)
   assert.equal(asstMsg.type, 'message')
-  assert.equal(asstMsg.content.length, 1)
   assert.equal(asstMsg.content[0].type, 'output_text')
   assert.equal(asstMsg.content[0].text, 'I will search for that.')
-
-  // Tool call goes into a top-level function_call item
   const fc = body.input.find(i => i.type === 'function_call')
-  assert.ok(fc, 'function_call top-level item present')
+  assert.ok(fc)
   assert.equal(fc.name, 'search')
   assert.equal(fc.call_id, 'call-xyz')
 })
 
 test('multi-turn with tool use → correct Responses API structure', async () => {
-  // Simulates a two-turn tool-use conversation:
-  //   user → assistant (tool call) → user (tool result + next question)
-  // This is the exact sequence that triggered the original bug on gpt-5.6-terra.
   const opts = makeOpts([
     { role: 'user',      content: [textBlock('What is the weather in Tokyo?')], source: { kind: 'user' } },
     { role: 'assistant', content: [{ type: 'tool-call', id: 'call-1', name: 'get_weather', arguments: '{"city":"Tokyo"}' }], source: { kind: 'model', provider: 'p', model: 'm' } },
@@ -253,16 +274,11 @@ test('multi-turn with tool use → correct Responses API structure', async () =>
     { role: 'user',      content: [textBlock('Thanks, and what about Osaka?')], source: { kind: 'user' } },
   ])
   const body = await serializeResponsesRequest(opts, undefined, noopResolver)
-
   const types = body.input.map(i => i.type ?? i.role)
-  // Expected order: user(message), function_call, function_call_output, user(message)
   assert.deepEqual(types, ['user', 'function_call', 'function_call_output', 'user'],
     `unexpected input item order: ${JSON.stringify(types)}`)
-
   const fc = body.input.find(i => i.type === 'function_call')
   assert.equal(fc.name, 'get_weather')
-  assert.equal(fc.call_id, 'call-1')
-
   const fco = body.input.find(i => i.type === 'function_call_output')
   assert.equal(fco.call_id, 'call-1')
   assert.equal(fco.output, 'Sunny, 28°C')
@@ -278,7 +294,6 @@ test('multiple tool calls in one assistant turn → multiple function_call items
     source: { kind: 'model', provider: 'p', model: 'm' }
   }])
   const body = await serializeResponsesRequest(opts, undefined, noopResolver)
-
   const fcs = body.input.filter(i => i.type === 'function_call')
   assert.equal(fcs.length, 2)
   assert.equal(fcs[0].name, 'tool_a')

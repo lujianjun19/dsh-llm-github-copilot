@@ -9,13 +9,30 @@
 /** Serialize the conversation into Responses `input` items. */
 async function serializeResponsesMessages(messages, imageResolver) {
   const input = [];
+  // Buffer for images from consecutive tool-result messages.
+  let pendingToolImages = [];
+
+  const flushToolImages = () => {
+    if (pendingToolImages.length === 0) return;
+    const content = [];
+    for (const { callId, handle, imageUrl } of pendingToolImages) {
+      content.push({ type: "input_text", text: `Image associated with tool call ${callId}:` });
+      if (handle) content.push({ type: "input_text", text: handle });
+      content.push({ type: "input_image", image_url: imageUrl });
+    }
+    input.push({ role: "user", content });
+    pendingToolImages = [];
+  };
+
   for (const message of messages) {
     if (message.role === "system") {
+      flushToolImages();
       assertTextOnly(message.content, "system");
       input.push({ role: "system", content: [{ type: "input_text", text: flattenText(message.content) }] });
       continue;
     }
     if (message.role === "assistant") {
+      flushToolImages();
       assertTextOnly(message.content, "assistant");
       const text = flattenText(message.content);
       const toolCallBlocks = message.content.filter((block) => block.type === "tool-call");
@@ -50,25 +67,41 @@ async function serializeResponsesMessages(messages, imageResolver) {
       continue;
     }
     const toolResults = message.content.filter((block) => block.type === "tool-result");
-    // First version: reject images inside tool-result content.
-    for (const result of toolResults) {
-      if (contentHasImage(result.content)) {
-        throw new LlmError("GitHub Copilot adapter does not support image content in tool-result messages (first version).", "UNSUPPORTED_CONTENT");
+    const userBlocks = message.content.filter((block) => block.type !== "tool-result");
+
+    if (toolResults.length > 0) {
+      // function_call_output: text only; images go to pendingToolImages.
+      for (const result of toolResults) {
+        input.push({
+          type: "function_call_output",
+          call_id: result.toolCallId,
+          output: flattenText(result.content) || "(no output)"
+        });
+        for (const block of result.content) {
+          if (block.type === "image") {
+            const resolved = await imageResolver.resolve(block.attachment);
+            pendingToolImages.push({
+              callId: result.toolCallId,
+              handle: resolved?.handle,
+              imageUrl: resolved.dataUrl
+            });
+          }
+        }
       }
     }
-    const userBlocks = message.content.filter((block) => block.type !== "tool-result");
+
     const text = flattenText(userBlocks);
     const hasImages = userBlocks.some((b) => b.type === "image");
-    if (text.length > 0 || hasImages || toolResults.length === 0) {
+    if (userBlocks.length > 0 && (text.length > 0 || hasImages)) {
+      flushToolImages();
       const contentParts = await serializeResponsesUserContent(userBlocks, imageResolver);
       input.push({ role: "user", content: contentParts });
+    } else if (toolResults.length === 0) {
+      flushToolImages();
+      input.push({ role: "user", content: [{ type: "input_text", text: "" }] });
     }
-    for (const result of toolResults) input.push({
-      type: "function_call_output",
-      call_id: result.toolCallId,
-      output: flattenText(result.content) || "(no output)"
-    });
   }
+  flushToolImages();
   return input;
 }
 /**
@@ -76,6 +109,7 @@ async function serializeResponsesMessages(messages, imageResolver) {
  * Responses API. Pure-text content produces a single input_text item;
  * mixed or image-only content produces an ordered array of input_text and
  * input_image items preserving the original block order.
+ * Each image block is preceded by its stable handle text (input_text).
  */
 async function serializeResponsesUserContent(blocks, imageResolver) {
   const hasImage = blocks.some((b) => b.type === "image");
@@ -86,9 +120,11 @@ async function serializeResponsesUserContent(blocks, imageResolver) {
       if (block.text.length > 0) parts.push({ type: "input_text", text: block.text });
     } else if (block.type === "image") {
       const resolved = await imageResolver.resolve(block.attachment);
+      // Emit stable handle text BEFORE the input_image part.
+      if (resolved?.handle) parts.push({ type: "input_text", text: resolved.handle });
       parts.push({ type: "input_image", image_url: resolved.dataUrl });
     }
-    // Reasoning and unknown block types are silently skipped for user content.
+    // Reasoning and unknown block types are silently skipped.
   }
   return parts;
 }

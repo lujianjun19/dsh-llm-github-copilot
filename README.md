@@ -4,7 +4,15 @@ English | [中文](README.zh.md)
 
 GitHub Copilot LLM adapter for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
-Sign in with your GitHub account and use every Copilot model — including GPT-4.1, Claude Sonnet, Gemini, and GPT-5 family — directly inside DeepSeek Harness. Vision-capable models accept pasted or dragged images in the chat composer.
+Sign in with your GitHub account and use every Copilot model — including GPT-4.1, Claude Sonnet, Gemini, and GPT-5 family — directly inside DeepSeek Harness. Vision-capable models accept pasted or dragged images in the chat composer, images from `/goal` and `/plan`, and images returned by tools such as `read_image` and MCP servers.
+
+## Requirements
+
+- **DeepSeek Harness `0.1.1-rc.2` or newer.** The vision path uses native image
+  APIs (`AttachmentStore.readImageRequest`, `offloadRequestImagesWithPolicy`,
+  `requestImageHandleText`) introduced in `0.1.1-rc.2`; earlier releases will
+  not run this adapter. Upgrade with `npm install -g @deepseek-ai/dsh@latest`.
+- Node.js ≥ 24.
 
 ## Install
 
@@ -99,7 +107,7 @@ export GITHUB_COPILOT_OAUTH_TOKEN=<your-github-oauth-token>
 
 **Model discovery** — available models are fetched live from `https://api.githubcopilot.com/models` on each login and cached for 5 minutes. No static list to maintain.
 
-**Vision support** — models that declare `supports.vision: true` (e.g. `gpt-4.1`, `gpt-4o`) accept images. Paste or drag a PNG/JPEG/WebP/GIF into the chat composer; the image is attached, persisted, and visible in history after reload.
+**Vision support** — models that declare `supports.vision: true` (e.g. `gpt-4.1`, `gpt-4o`) accept images from every source Harness produces: pasted or dragged images in the composer, `/goal` and `/plan` attachments, and tool-result images (`read_image`, MCP servers). Images are derived per model route through the Harness attachment service (`readImageRequest`), tagged with a stable handle, and sent over both wire protocols. When a request exceeds a model's image count or the local inline byte budget, older request images are offloaded first while the current user submission and the latest tool-result batch are protected; a stable placeholder marks any omitted image without altering the durable history. Set `imageOverflowPolicy: error` to reject over-limit requests instead.
 
 **Two wire protocols** — the adapter speaks both OpenAI Chat Completions (`/chat/completions`) and the newer Responses API (`/responses`). The correct endpoint is chosen automatically per model.
 
@@ -121,7 +129,25 @@ The plugin works with no configuration. To override defaults, edit the profile's
     defaultContextWindow: 262144
     defaultMaxTokens: 32768
     streamIdleTimeoutMs: 300000
+    imageOverflowPolicy: offload-oldest         # offload-oldest | error
+    defaultImagePixelBudget: 4194304            # request-image pixel budget (2048×2048)
+    maxInlineRequestImageBytes: 20971520        # total Base64 request-image budget (20 MiB)
+    inlineImageOffloadByteQuantum: 10485760     # oldest-image removal step (10 MiB)
     models: []   # optional static fallback catalog; leave empty to use live discovery
+```
+
+Static fallback models may declare vision capability explicitly (used only when
+live `/models` discovery fails); capability is never inferred from a model name:
+
+```yaml
+    models:
+      - id: custom-vision-model
+        inputModalities: [text, image]
+        vision:
+          maxImageBytes: 3145728
+          maxImages: 1
+          mediaTypes: [image/jpeg, image/png, image/webp]
+          imagePixelBudget: 4194304
 ```
 
 ## Develop

@@ -26,7 +26,7 @@ flowchart TD
         LOCALOK -- ✅ --> NEWBRANCH["git checkout -b feat/<name>\n为本次变更创建功能分支"]
         NEWBRANCH --> GITADD["git add -A"]
         GITADD --> GITCOMMIT["git commit\nConventional Commit 格式"]
-        GITCOMMIT --> GETTOKEN["github-auth skill\npython3 get_token.py\n① 有缓存 → 直接返回\n② 无缓存 → Device Flow\n   打开浏览器授权页\n   输入设备码\n   自动轮询获取 token\n   缓存至 /tmp/.pi_github_token"]
+        GITCOMMIT --> GETTOKEN["github-auth skill\npython3 get_token.py\n① 有缓存 → 直接返回\n② 无缓存 → Device Flow\n   后台运行，读 stderr\n   展示“Open in browser + 设备码”\n   等用户手动浏览器授权\n   用户确认后再取缓存 token\n   缓存至 /tmp/.pi_github_token"]
         GETTOKEN --> PUSHBRANCH["git push https://TOKEN@github.com/...\npush feature branch"]
         PUSHBRANCH --> CREATEPR["GitHub API: POST /repos/.../pulls\ntitle / head / base=main / body"]
         CREATEPR --> MERGEPR["GitHub API: PUT /repos/.../pulls/:n/merge\nmerge_method: squash"]
@@ -72,3 +72,18 @@ flowchart TD
     style CI fill:#f3e5f5,stroke:#9C27B0
     style POSTTEST fill:#e0f2f1,stroke:#009688
 ```
+
+## GitHub Device Flow 授权（BRANCH & PR 阶段）
+
+推送分支、创建/合并 PR、推 tag 前需要 GitHub token。采用 `github-auth` skill
+的 **Device Flow**，且**必须由用户手动授权**：
+
+1. 后台运行 `python3 ~/.pi/agent/skills/github-auth/scripts/get_token.py`，
+   把 stdout/stderr 重定向到临时文件（脚本会阻塞轮询）。
+2. 从 stderr 读取并向用户展示：
+   - `🌐 Open in browser : https://github.com/login/device`
+   - `🔑 Enter code : XXXX-XXXX`（设备码，有效期约 899 秒）
+3. **等待用户在浏览器完成授权并确认**，不要自行绕过。
+4. 用户确认后再次调用 `get_token.py` 取回已缓存的 token（`gho_…`），
+   缓存位于 `/tmp/.pi_github_token`，同一 OS 会话内后续调用直接复用、无需再授权。
+5. token 只经环境变量传递给 `git push` / GitHub API，绝不回显或写入日志。

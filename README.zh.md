@@ -4,7 +4,15 @@
 
 GitHub Copilot LLM 适配器，适用于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。
 
-使用 GitHub 账号登录后，可直接在 DeepSeek Harness 中调用所有 Copilot 模型，包括 GPT-4.1、Claude Sonnet、Gemini 和 GPT-5 系列。支持视觉能力的模型还可以在对话框中粘贴或拖拽图片。
+使用 GitHub 账号登录后，可直接在 DeepSeek Harness 中调用所有 Copilot 模型，包括 GPT-4.1、Claude Sonnet、Gemini 和 GPT-5 系列。支持视觉能力的模型可以接受对话框中粘贴/拖拽的图片、`/goal` 和 `/plan` 携带的图片，以及 `read_image`、MCP 等工具返回的图片。
+
+## 依赖要求
+
+- **DeepSeek Harness `0.1.1-rc.2` 或更高版本。** 视觉链路依赖 `0.1.1-rc.2`
+  新增的原生图片 API（`AttachmentStore.readImageRequest`、
+  `offloadRequestImagesWithPolicy`、`requestImageHandleText`）；旧版本
+  无法运行本适配器。升级命令：`npm install -g @deepseek-ai/dsh@latest`。
+- Node.js ≥ 24。
 
 ## 安装
 
@@ -99,7 +107,7 @@ export GITHUB_COPILOT_OAUTH_TOKEN=<your-github-oauth-token>
 
 **动态模型发现** — 每次登录后从 `https://api.githubcopilot.com/models` 实时拉取可用模型并缓存 5 分钟，无需维护静态列表。
 
-**视觉支持** — 声明了 `supports.vision: true` 的模型（如 `gpt-4.1`、`gpt-4o`）支持图片输入。将 PNG/JPEG/WebP/GIF 粘贴或拖拽到对话框，图片会自动附加、持久化，刷新后历史记录中仍可查看。
+**视觉支持** — 声明了 `supports.vision: true` 的模型（如 `gpt-4.1`、`gpt-4o`）支持 Harness 产生的所有图片来源：对话框粘贴/拖拽、`/goal` 和 `/plan` 附件、以及工具结果图片（`read_image`、MCP）。图片按模型路由通过 Harness 附件服务（`readImageRequest`）派生，附带稳定句柄，并在两种 wire 协议上发送。当请求超过模型图片数量或本地 Base64 预算时，会优先淘汰较旧的请求图片，同时保护当前用户提交和最新工具结果批次；被省略的图片以稳定占位符标记，不修改持久历史。设置 `imageOverflowPolicy: error` 可改为超限时直接拒绝。
 
 **双协议** — 适配器同时支持 OpenAI Chat Completions（`/chat/completions`）和新版 Responses API（`/responses`），根据模型自动选择对应端点。
 
@@ -121,7 +129,24 @@ export GITHUB_COPILOT_OAUTH_TOKEN=<your-github-oauth-token>
     defaultContextWindow: 262144
     defaultMaxTokens: 32768
     streamIdleTimeoutMs: 300000
+    imageOverflowPolicy: offload-oldest         # offload-oldest | error
+    defaultImagePixelBudget: 4194304            # 请求图片像素预算（2048×2048）
+    maxInlineRequestImageBytes: 20971520        # 所有请求图片的 Base64 总预算（20 MiB）
+    inlineImageOffloadByteQuantum: 10485760     # 旧图淘汰步长（10 MiB）
     models: []   # 可选的静态 fallback 模型列表，留空则使用动态发现
+```
+
+静态 fallback 模型可以显式声明视觉能力（仅在动态 `/models` 发现失败时使用）；能力绝不根据模型名称推断：
+
+```yaml
+    models:
+      - id: custom-vision-model
+        inputModalities: [text, image]
+        vision:
+          maxImageBytes: 3145728
+          maxImages: 1
+          mediaTypes: [image/jpeg, image/png, image/webp]
+          imagePixelBudget: 4194304
 ```
 
 ## 开发

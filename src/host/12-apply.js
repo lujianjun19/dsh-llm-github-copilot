@@ -117,7 +117,8 @@ function apply(ctx, config) {
     catalog,
     resolveModel,
     resolveConnection,
-    resolveAttachments: () => ctx.get("attachments")
+    resolveAttachments: () => ctx.get("attachments"),
+    warn: (msg) => ctx.logger.warn(msg)
   });
   ctx.llm.registerConfigurableProviders([{
     provider: PROVIDER,
