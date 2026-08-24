@@ -73,5 +73,23 @@ function readModelsListing(body) {
   }
   return models.length > 0 ? models : void 0;
 }
+
+/**
+ * Build a catalog cache entry with a result-dependent TTL. A non-empty catalog
+ * is cached for {@link CATALOG_TTL_MS}; an empty catalog (no token, discovery
+ * failure, or empty fallback) is cached only for {@link NEGATIVE_CATALOG_TTL_MS}
+ * so the next poll retries quickly. This is what lets a re-login recover the
+ * model list without restarting the process.
+ * @param {readonly object[]} models - the resolved catalog (possibly empty).
+ * @param {number} now - current epoch millis.
+ * @returns {{ at: number, models: readonly object[], ttl: number }}
+ */
+function catalogCacheEntry(models, now) {
+  return {
+    at: now,
+    models,
+    ttl: models.length > 0 ? CATALOG_TTL_MS : NEGATIVE_CATALOG_TTL_MS
+  };
+}
 //#endregion
 
