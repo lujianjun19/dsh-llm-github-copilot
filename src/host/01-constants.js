@@ -43,6 +43,21 @@ const TOKEN_REFRESH_MARGIN_MS = 120000;
 /** How long a discovered model catalog is reused before re-interrogating the endpoint. */
 const CATALOG_TTL_MS = 300000;
 
+/** Request-image overflow strategy applied when Provider/local limits are exceeded. */
+const DEFAULT_IMAGE_OVERFLOW_POLICY = "offload-oldest";
+
+/** Default pixel budget per request image: 2048 × 2048. */
+const DEFAULT_IMAGE_PIXEL_BUDGET = 4194304;
+
+/** Default maximum total Base64 payload for all request images in one request (20 MiB). */
+const DEFAULT_MAX_INLINE_REQUEST_IMAGE_BYTES = 20 * 1024 * 1024;
+
+/** Default byte quantum for inline image offload (10 MiB). */
+const DEFAULT_INLINE_IMAGE_OFFLOAD_BYTE_QUANTUM = 10 * 1024 * 1024;
+
+/** Default per-request-image maxBytes when the model does not publish a size limit (4 MiB). */
+const DEFAULT_REQUEST_IMAGE_MAX_BYTES = 4 * 1024 * 1024;
+
 /** Conservative fallback catalog used only when discovery and configuration name no models. */
 const DEFAULT_MODELS = [
   { id: "gpt-4o", name: "GPT-4o" },

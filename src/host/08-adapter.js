@@ -1,4 +1,6 @@
 //#region adapter
+/** A no-op resolver used for text-only requests to satisfy the serialize signature. */
+const noopImageResolver = { resolve: () => Promise.reject(new LlmError("unexpected image in text-only request", "UNSUPPORTED_CONTENT")) };
 function modelInfo(provider, model) {
   const reasoning = reasoningMetadata(model);
   return {
@@ -81,7 +83,7 @@ var GitHubCopilotAdapter = class extends LlmAdapter {
     // Image pre-flight: gate model capability and attachment-service presence
     // before doing any I/O. Text-only requests skip this entirely.
     const containsImage = options.messages.some((m) => contentHasImage(m.content));
-    let attachmentStore;
+    let projection = null;
     if (containsImage) {
       const modalities = entry?.inputModalities ?? ["text"];
       if (!modalities.includes("image")) {
@@ -90,16 +92,31 @@ var GitHubCopilotAdapter = class extends LlmAdapter {
           "UNSUPPORTED_CONTENT"
         );
       }
-      attachmentStore = this.config.resolveAttachments();
+      const attachmentStore = this.config.resolveAttachments();
       if (attachmentStore == null) {
         throw new LlmError(
           "GitHub Copilot image input requires the durable attachment service",
           "UNSUPPORTED_CONTENT"
         );
       }
+      const adapterOptions = this.config.options();
+      projection = await prepareRequestImages({
+        messages: options.messages,
+        model: entry,
+        attachmentStore,
+        signal,
+        overflowPolicy: adapterOptions.imageOverflowPolicy,
+        defaultImagePixelBudget: adapterOptions.defaultImagePixelBudget,
+        maxInlineRequestImageBytes: adapterOptions.maxInlineRequestImageBytes,
+        inlineImageOffloadByteQuantum: adapterOptions.inlineImageOffloadByteQuantum,
+        logger: this.config.warn != null ? { warn: this.config.warn } : void 0
+      });
     }
-    const imageResolver = createImageResolver(attachmentStore, entry, signal);
-    const body = await protocol.serialize(options, wire, imageResolver);
+    // Build request options with projected messages (offloaded images replaced)
+    const requestOptions = projection != null
+      ? { ...options, messages: projection.messages }
+      : options;
+    const body = await protocol.serialize(requestOptions, wire, projection ?? noopImageResolver);
     const payload = JSON.stringify(body);
     const headers = {
       authorization: `Bearer ${connection.apiToken}`,

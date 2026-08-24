@@ -1,149 +1,224 @@
-# GitHub Copilot 视觉能力与文档理解：开发交接规格
+# GitHub Copilot 原生视觉能力与文档理解：开发交接规格
 
-> 面向后续编码模型的自包含实施说明。开始编码前必须完整阅读本文件和仓库根目录 `AGENTS.md`。
+> 本文件是本仓库视觉功能的实施权威。开始编码前必须完整阅读本文件、仓库根目录 `AGENTS.md`、`CONTEXT.md`，以及 `docs/adr/` 中相关决策。
 
-## 0. 仓库与强制规则
+## 0. 状态与目标基线
 
-- 源码仓库：本仓库根目录
-- DSH 安装目标：`~/.dsh/profiles/web/node_modules/@deepseek-ai/dsh-llm-github-copilot`
-- 当前基线：`v0.2.0`
-- 当前 DSH API 目标：`@deepseek-ai/dsh` `0.1.0-rc.6`
-- 禁止直接修改 `lib/`；它由 `npm run build` 生成。
-- 禁止直接修改 DSH 安装目录。
-- 禁止修改 DeepSeek Harness 核心代码，除非用户另行明确批准。
-- 每个源码分片必须小于 450 行；新增职责应新增分片，不要继续扩大单文件。
-- UI 必须使用 Harness primitives/tokens；语言随 Harness locale，支持中文和英文，缺省回退英文。
+当前仓库状态：
 
-每次开发的固定流程：
+```text
+插件版本：@lujianjun19/dsh-llm-github-copilot 0.3.10
+当前实现基线：@deepseek-ai/dsh 0.1.0-rc.6
+当前自动化测试：86 项通过
+当前已实现：动态视觉 catalog、用户图片 Chat/Responses 序列化、基础模型限制校验
+当前未完成：最新 Harness 原生图片来源、请求图片派生、历史图片 offload、真实 Provider 全链路 smoke
+```
+
+本轮目标：
+
+```text
+目标插件版本：v0.4.0
+最低 Harness 基线：0.1.1-rc.2
+上游调查标签：dsh-v0.1.1-rc.2
+上游调查提交：b150a551b8d465e31e418e1b2eaf5e79bbb7d28e
+```
+
+最新 Harness 参考：
+
+- [Release notes](https://github.com/deepseek-ai/deepseek-harness/releases)
+- [DeepSeek adapter 视觉说明](https://github.com/deepseek-ai/deepseek-harness/blob/b150a551b8d465e31e418e1b2eaf5e79bbb7d28e/packages/llm/llm-deepseek/README.md)
+- [Attachment subsystem](https://github.com/deepseek-ai/deepseek-harness/blob/b150a551b8d465e31e418e1b2eaf5e79bbb7d28e/docs/subsystems/attachment.md)
+- [`readImageRequest()` 实现](https://github.com/deepseek-ai/deepseek-harness/blob/b150a551b8d465e31e418e1b2eaf5e79bbb7d28e/packages/attachment/attachment-local/src/request-image.ts)
+- [Request image offload helpers](https://github.com/deepseek-ai/deepseek-harness/blob/b150a551b8d465e31e418e1b2eaf5e79bbb7d28e/packages/llm/llm/src/content.ts)
+- [Copilot 官方 Responses 工具图片转换](https://github.com/microsoft/vscode-copilot-chat/blob/5863f5a7088958050792b5dccbe8b46c6e13eccc/src/platform/endpoint/node/responsesApi.ts#L145-L166)
+
+---
+
+## 1. 仓库与强制规则
+
+- 只在本仓库根目录工作。
+- Host 源码位于 `src/host/`，Client 源码位于 `src/client/`。
+- 禁止直接编辑 `lib/index.js`、`lib/client.js` 或 `~/.dsh/profiles` 下的安装包。
+- `lib/` 必须由 `npm run build` 生成并与源码一起提交。
+- 每个源码 fragment 必须少于 450 行；新增职责使用新 fragment。
+- 不修改 DeepSeek Harness core，除非用户另行明确批准。
+- 不重写 Harness Composer、AttachmentRail、图片历史 renderer 或 AttachmentStore。
+- Client UI 必须使用 Harness primitives/tokens，支持中英文并以英文回退；本轮不需要新增视觉 Client UI。
+
+固定开发流程：
 
 ```bash
-cd <本仓库根目录>
 git status --short
-# 修改 src/ 和 tests/
+# 修改 src/、tests/ 和 docs/
 npm run build
 npm test
 npm run check
 git diff --stat
 git diff
-# 提交后
+```
+
+通过后才能：
+
+```bash
 npm run deploy
 ```
 
-Host 代码变化后必须重启 `dsh web`；Client 变化后需要硬刷新浏览器。
+Host 变化后重启 `dsh web`；Client 变化后硬刷新浏览器。
 
 ---
 
-## 1. 本次开发目标
+## 2. 领域边界与术语
 
-本设计包含两个相互独立的工作流。
+规范术语以根目录 `CONTEXT.md` 为准：
 
-### 工作流 A：GitHub Copilot 视觉模型支持（本仓库实施）
+- **Durable image**：经 Harness 准入并以不可变 Attachment 引用保存在会话历史中的图片。
+- **Request image**：针对某个精确模型路由，从 Durable image 临时派生的 Provider 请求版本。
+- **Image overflow policy**：Request images 超过 Provider 或本地资源限制时的处理规则。
+- **Protected request image**：不能被默认 offload 的当前用户图片和最新工具图片批次。
 
-完成后：
+必须保持以下边界：
 
-1. 从 GitHub `/models` 动态识别 `capabilities.supports.vision === true` 的模型。
-2. 向 DSH 声明这些模型支持 `inputModalities: ['text', 'image']`。
-3. 复用 DSH 已有的图片粘贴、拖拽、缩略图、持久化和历史展示。
-4. 从 `ctx.attachments` 读取持久化图片。
-5. 同时支持 Copilot `/chat/completions` 和 `/responses` 图片请求。
-6. 根据模型返回的图片数量、大小、MIME 限制进行请求前校验。
-7. 不通过模型名称猜测视觉能力；账号实际 `/models` 返回值是唯一事实源。
+```text
+Harness 拥有：图片准入、持久化、历史、显示、模型能力门禁、请求图片派生
+本插件拥有：Copilot catalog 映射、Copilot 路由策略、Copilot wire 序列化和错误语义
+Provider 拥有：模型实际能力、单图大小、图片数量、MIME 和最终请求接受结果
+```
 
-### 工作流 B：部分文档理解（建议独立工具插件实施）
-
-支持工作区路径中的：
-
-- PDF（仅有文本层的 PDF）
-- DOCX
-- XLSX
-- CSV
-- TXT / Markdown / JSON
-
-文档能力通过 `read_document` 工具把文件解析为受限、结构化文本，再交给任意 LLM。它不应耦合在 Copilot adapter 中。
-
-### 明确不在本次范围
-
-- 聊天输入框直接上传 PDF、DOCX、XLSX。
-- 新增通用文件 AttachmentRail。
-- 扫描 PDF OCR。
-- `.doc` / `.xls` 旧二进制格式。
-- PPTX。
-- 加密/密码文档。
-- 执行 Office 宏、公式或嵌入脚本。
-- 自动修改 DeepSeek Harness 核心 attachment 协议。
-- 第一版支持 Chat Completions 的 tool-result 图片。
+不要把 Durable image、Request image 和 wire Data URI 混称为“附件”。
 
 ---
 
-## 2. 已确认的 DSH 现状
+## 3. 已确认的最新 Harness 能力
 
-当前安装的 DSH rc.6 已经包含完整的图片链路：
+### 3.1 Durable image 链路
+
+最新 Harness 已提供完整链路：
 
 ```text
 浏览器粘贴/拖拽 File
-  → ui-conversation InputBar
-  → AttachmentRail 缩略图
-  → session.prompt(Base64 image part)
-  → ApiProxy 根据 inputModalities 做模型门禁
-  → attachment-local 校验并持久化
+  → Composer / command image input
+  → AttachmentStore 批量准入并持久化
   → Session 日志保存 ImageAttachmentRef
-  → LLM adapter 读取 AttachmentStore
+  → LLM 根据 inputModalities 做模型门禁
+  → adapter 从 AttachmentStore 派生 Request image
   → Provider wire request
 ```
 
-当前运行环境已确认包含：
+本插件不得重复实现上传、缩略图、持久化或历史恢复。
+
+### 3.2 最新 Attachment 默认值
+
+Harness `0.1.1-rc.2` 的本地 AttachmentStore 默认准入限制：
 
 ```text
-@deepseek-ai/dsh-attachment              0.1.0-rc.6
-@deepseek-ai/dsh-attachment-local        0.1.0-rc.6
-@deepseek-ai/dsh-client-ui-attachment    0.1.0-rc.6
-@deepseek-ai/dsh-client-ui-conversation  0.1.0-rc.6
+单个源图片：20 MiB
+单消息图片数：20
+单消息源图片总量：200 MiB
+单图像素：64,000,000
+单边尺寸：8192 px
 ```
 
-默认图片限制：
+Provider-independent 持久化规范化默认：
 
-```json
-{
-  "maxImageBytes": 5242880,
-  "maxImagesPerMessage": 20,
-  "maxMessageImageBytes": 104857600,
-  "maxImagePixels": 40000000,
-  "mediaTypes": ["image/png", "image/jpeg", "image/webp", "image/gif"]
-}
+```text
+最长边：2048 px
+编码字节：4 MiB
 ```
 
-DSH Host 已有以下门禁：
+这些是 Harness 部署策略，不是 Copilot 模型限制。
 
-- 发送图片时调用 `ctx.llm.resolveModelInfo()`。
-- 如果 `inputModalities` 明确不包含 `image`，返回 `MODEL_DOES_NOT_SUPPORT_IMAGES`。
-- 会话历史已有图片时，禁止切换到明确只支持文本的模型。
+### 3.3 `readImageRequest()`
 
-因此不要重写浏览器图片上传 UI，也不要重复实现图片存储。
+最新 `AttachmentStore` 提供：
+
+```ts
+readImageRequest(ref, { maxPixels, maxBytes }, signal)
+```
+
+它负责：
+
+- 按比例缩放且不放大小图；
+- PNG、WebP、JPEG 编码选择；
+- 编码质量降级；
+- 像素和字节硬上限；
+- 8-bit sRGB/sRGBA 校验；
+- 确定性 `variantId`；
+- 磁盘缓存；
+- 相同变体 singleflight；
+- 有界图片转换并发；
+- 每个等待者独立取消。
+
+本插件必须调用该 API，不能继续用 `readImage()` 后直接 Base64 作为主路径。
+
+### 3.4 LLM 公共图片 helper
+
+最新 `@deepseek-ai/dsh-llm` 导出：
+
+```ts
+contentHasImage()
+offloadRequestImagesWithPolicy()
+requestImageHandleText()
+projectImagesForTextModel()
+```
+
+本插件应直接复用前三项。文本模型历史图片投影由 Harness runtime 负责，本插件不创建第二套投影。
+
+### 3.5 最新原生图片来源
+
+Harness 可以产生图片的入口包括：
+
+- 普通 Composer 用户消息；
+- `/goal`；
+- `/plan`；
+- 内置 `read_image`；
+- MCP 工具结果；
+- ACP/Code Mode 嵌套工具结果。
+
+其中工具结果消息具有：
+
+```text
+role = user
+source.kind = tool
+content = [{ type: tool-result, content: [...text/image blocks] }]
+```
+
+当前插件拒绝 tool-result 图片，这是 v0.4.0 必须修复的主要缺口。
 
 ---
 
-## 3. 当前插件为什么不支持图片
+## 4. 本轮范围
 
-当前源码中的阻塞点：
+### 4.1 必须完成
 
-1. `src/host/08-adapter.js` 的 `modelInfo()` 固定返回：
+1. 将 Harness 最低基线升级到 `0.1.1-rc.2`。
+2. 保留 GitHub `/models` 动态视觉能力发现。
+3. 允许静态 catalog 显式声明视觉能力，但不按名称推断。
+4. 使用 `readImageRequest()` 派生 Request images。
+5. 支持 `error` 和 `offload-oldest` 两种 overflow policy，默认后者。
+6. 保护最近用户图片，并优先保留最新工具图片批次。
+7. Chat Completions 和 Responses 都支持 user 与 tool-result 图片。
+8. 支持 Harness 所有原生图片来源。
+9. 对图片出现次数、单图大小、MIME 和本地聚合 Base64 预算做请求前处理。
+10. 完成最新 Harness 集成和真实 Copilot smoke 后才能发布 v0.4.0。
 
-   ```js
-   inputModalities: ["text"]
-   ```
+### 4.2 明确不在范围
 
-2. `src/host/03-serialize.js` 的 `assertTextOnly()` 主动拒绝图片。
-3. `src/host/05-responses-api.js` 只输出 `input_text`。
-4. adapter 没有读取 `ctx.attachments`。
-5. `src/host/09-model-discovery.js` 丢弃了 GitHub 返回的视觉能力和视觉限制。
-
-视觉支持的核心工作应集中在这些分片，避免无关改动 OAuth、Settings 和 Client UI。
+- 修改 Harness core；
+- 自定义 Composer 或通用 FileRail；
+- PDF、DOCX、XLSX 直接上传聊天框；
+- Provider 外部图片 URL；
+- assistant 图片输出；
+- system/assistant 历史图片输入；
+- 插件内引入 `sharp` 或第二套图片转码管线；
+- DeepSeek `/files`、file-id 缓存或配额清理；
+- 根据模型名字/family 推断视觉能力；
+- 文档解析代码合并进本插件。
 
 ---
 
-## 4. GitHub 模型视觉能力事实源
+## 5. GitHub 模型视觉能力事实源
 
-GitHub `/models` 的典型结构：
+GitHub `/models` 典型返回：
 
 ```json
 {
@@ -169,31 +244,33 @@ GitHub `/models` 的典型结构：
 }
 ```
 
-保守判断规则：
+自动判断规则：
 
 ```js
 const supportsVision = raw?.capabilities?.supports?.vision === true
 ```
 
-只有明确为 `true` 时声明 `image`。不要根据下列信息推断：
+只有严格等于 `true` 时自动声明 `image`。不得从以下信息推断：
 
-- 模型名称；
-- 模型 family；
-- 存在 `limits.vision` 但 `supports.vision` 不明确；
-- 其他账号曾经返回的能力。
+- 模型 id 或显示名称；
+- family/vendor；
+- 存在 `limits.vision`；
+- 其他账号或其他时间返回的目录；
+- endpoint 类型本身。
 
-原因：Copilot 模型和视觉权限会因账号、组织、地区和策略不同。
+原因：模型和视觉权限会随账号、组织、地区、策略和模型生命周期变化。
 
 ---
 
-## 5. 建议的内部模型结构
+## 6. 内部 catalog 结构
 
-在 `src/host/09-model-discovery.js` 中给 catalog entry 增加：
+动态和静态 catalog 最终统一为：
 
 ```js
 {
   id,
   name,
+  description,
   contextWindow,
   maxTokens,
   endpoints,
@@ -201,160 +278,262 @@ const supportsVision = raw?.capabilities?.supports?.vision === true
   vision: {
     maxImageBytes,
     maxImages,
-    mediaTypes
+    mediaTypes,
+    imagePixelBudget
   }
 }
 ```
 
-非视觉模型：
-
-```js
-inputModalities: ["text"]
-```
-
-视觉限制映射：
+字段映射：
 
 ```text
-max_prompt_image_size → vision.maxImageBytes
-max_prompt_images     → vision.maxImages
-supported_media_types → vision.mediaTypes
+max_prompt_image_size  → vision.maxImageBytes
+max_prompt_images      → vision.maxImages
+supported_media_types  → vision.mediaTypes
 ```
 
-必须过滤非法值：
+GitHub 当前未公布通用像素预算或聚合图片字节预算，因此：
 
-- 大小/数量必须是正整数；
-- MIME 必须是非空字符串；
-- 重复 MIME 去重；
-- 未知字段忽略。
+- 动态模型默认 `imagePixelBudget = defaultImagePixelBudget`；
+- 聚合 Base64 预算来自插件本地资源策略；
+- 不得把这两个本地值伪装成 GitHub 返回的 Provider 限制。
 
-如果模型支持视觉但没有返回某项限制，则该项保持 `undefined`，由 DSH 全局 attachment 限制兜底。
+字段校验：
+
+- 大小、数量、像素必须是正安全整数；
+- MIME 必须是非空字符串并去重；
+- `inputModalities` 非空、无重复、仅允许 `text`/`image`；
+- text-only 模型不能声明 `vision` 限制；
+- 未知字段忽略；
+- 未公布的 Provider 限制保持 `undefined`。
 
 ---
 
-## 6. 修改 `modelInfo()` 和 `resolveModel()`
+## 7. 配置设计
 
-文件：`src/host/08-adapter.js`
+建议新增顶层设置：
 
-当前固定文本能力必须改为：
-
-```js
-inputModalities: model.inputModalities ?? ["text"]
+```yaml
+imageOverflowPolicy: offload-oldest       # offload-oldest | error
+defaultImagePixelBudget: 4194304          # 2048 * 2048
+maxInlineRequestImageBytes: 20971520       # 20 MiB Base64 字符载荷
+inlineImageOffloadByteQuantum: 10485760    # 10 MiB
 ```
 
-`listModels()` 和 `resolveModel()` 必须返回一致的能力，不能一个声明图片、另一个仍然返回文本。
+这些设置应进入现有 `llm-github-copilot` settings namespace，并沿用当前 last-good snapshot 行为热更新。
 
-验收断言：
+静态 catalog 可显式配置：
 
-```js
-await ctx.llm.listModels(PROVIDER)
-await ctx.llm.resolveModelInfo(PROVIDER, modelId)
+```yaml
+models:
+  - id: custom-vision-model
+    name: Custom Vision Model
+    inputModalities: [text, image]
+    vision:
+      maxImageBytes: 3145728
+      maxImages: 1
+      mediaTypes: [image/jpeg, image/png, image/webp]
+      imagePixelBudget: 4194304
 ```
 
-对同一个视觉模型都应得到：
-
-```json
-["text", "image"]
-```
-
-静态 `settings.yaml` model 配置如果没有明确的 `inputModalities`，必须保守视为 `['text']`。不要为静态模型按名称自动启用视觉。
-
-可选增强：在 `src/host/02-schema.js` 的静态模型 schema 中增加：
-
-```js
-inputModalities: z.array(z.union([z.const("text"), z.const("image")]))
-```
-
-但第一版可以只支持动态 `/models` 视觉能力。
-
----
-
-## 7. AttachmentStore 接入设计
-
-在 `src/host/12-apply.js` 创建 adapter 时增加：
-
-```js
-resolveAttachments: () => ctx.get("attachments")
-```
-
-不要在插件启动时强制要求 attachment service。它应在真正发送图片时动态解析，和 `llm-pi-ai` 的行为一致。
-
-请求中含图片时：
-
-```js
-const containsImage = options.messages.some(message =>
-  contentHasImage(message.content)
-)
-```
-
-门禁顺序：
-
-1. 当前 catalog model 必须存在。
-2. `inputModalities` 必须包含 `image`。
-3. `ctx.get('attachments')` 必须存在。
-4. 校验图片数量。
-5. 读取每个持久化图片。
-6. 校验实际 MIME 和字节大小。
-7. 生成 Provider wire payload。
-
-缺少 attachment service 时：
-
-```js
-throw new LlmError(
-  "GitHub Copilot image input requires the durable attachment service",
-  "UNSUPPORTED_CONTENT"
-)
-```
-
----
-
-## 8. 请求级图片解析器
-
-建议新增源文件：
+优先级：
 
 ```text
-src/host/04-attachment-resolver.js
+动态 /models 成功 → 使用账号实时返回
+动态发现失败      → 使用显式静态 catalog
+静态未声明 image  → text-only
 ```
 
-插入后重排编号，保持构建顺序明确。
+不得保留“发现失败后按名称自动开启 vision”的路径。
 
-职责：
+---
+
+## 8. Request image 投影模块
+
+建议用新的 Host fragment 替换当前简单 resolver：
+
+```text
+src/host/04-image-request-projection.js
+```
+
+它是 Chat 和 Responses 共享的深模块，负责完整图片策略；两个 serializer 只负责 wire shape。
+
+### 8.1 输入与输出
+
+概念接口：
 
 ```js
-createImageResolver(attachmentStore, model, signal)
+prepareRequestImages({
+  messages,
+  model,
+  attachmentStore,
+  signal,
+  overflowPolicy,
+  defaultImagePixelBudget,
+  maxInlineRequestImageBytes,
+  inlineImageOffloadByteQuantum
+})
 ```
 
-内部使用：
-
-```js
-Map<attachmentId, Promise<ResolvedImage>>
-```
-
-避免同一附件在一个请求中重复读取和 Base64 编码。
-
-输出：
+输出至少包含：
 
 ```js
 {
-  ref,
-  bytes,
-  mediaType,
-  dataUrl
+  messages,               // 临时投影，不修改 Durable history
+  requestImages,          // Map<attachmentId, RequestImageAttachment>
+  omitted,                // 数量和命中的限制，用于单条 warning
+  resolve(ref),           // 返回派生版本、稳定句柄和 data URL
+  protectedAttachmentIds
 }
 ```
 
-其中：
+具体接口可以调整，但策略必须只存在于一个模块中。
 
-```js
-dataUrl = `data:${mediaType};base64,${Buffer.from(data).toString("base64")}`
+### 8.2 图片出现次数与 I/O 去重
+
+Provider `max_prompt_images` 按 wire 图片出现次数计算：
+
+```text
+同一个 attachmentId 出现两次 = 2 张 Provider 图片
 ```
 
-必须：
+但派生 I/O 按唯一 attachmentId 去重：
 
-- 把 request AbortSignal 传给 `attachments.readImage(ref, signal)`；
-- 使用存储层返回的真实 `stored.ref.mediaType`；
-- 不信任消息中的 MIME 声明；
-- 不把 token、图片内容或完整 data URL 写入日志；
-- 同一 attachmentId 只调用一次 `readImage()`。
+```text
+同一个 attachmentId 出现两次 = 1 次 readImageRequest()
+```
+
+当前 v0.3.10 的“同 attachmentId 只计一张”测试必须改为新的正确语义。
+
+### 8.3 Request image policy
+
+每个模型解析：
+
+```js
+{
+  maxPixels: model.vision?.imagePixelBudget ?? defaultImagePixelBudget,
+  maxBytes: model.vision?.maxImageBytes ?? 4 * 1024 * 1024
+}
+```
+
+默认像素预算 `2048 × 2048`，目的是保留 Harness 已规范化图片的最大细节，不套用 DeepSeek Provider 专属的 640,000 像素默认值。
+
+### 8.4 Protected request images
+
+每次请求按消息 `source.kind` 定位：
+
+1. 最近一条 `source.kind === "user"` 消息中的图片受保护；
+2. 当前请求中最新一条含图片的 `source.kind === "tool"` 结果批次优先保留；
+3. 更旧工具图片可被更新工具图片替代；
+4. 工具图片不能挤掉当前用户图片；
+5. 当前用户图片与最新工具图片合计仍无法满足限制时明确失败。
+
+不得简单以“最后一条 role=user 消息”为当前用户输入，因为工具结果本身也是 role=user。
+
+### 8.5 两阶段 offload
+
+默认 `offload-oldest` 使用两阶段：
+
+#### 第一阶段：保守投影
+
+在读取图片前，根据 Durable ref 元数据估算：
+
+```js
+conservativeBytes = Math.min(ref.bytes, requestPolicy.maxBytes)
+```
+
+将 Protected images 占用从可用预算中扣除，只对可淘汰图片调用 Harness 的 `offloadRequestImagesWithPolicy()`。实现可以用临时 sentinel/mask 保留 Protected blocks，再合并回投影；不得修改原消息对象。
+
+目的：不读取注定会被省略的旧图片。
+
+#### 第二阶段：精确投影
+
+只对第一阶段保留的唯一 AttachmentRefs 并行调用：
+
+```js
+await Promise.all(refs.map(ref =>
+  attachmentStore.readImageRequest(ref, policy, signal)
+))
+```
+
+再根据派生版本精确字节和 Base64 长度执行第二次 offload：
+
+```text
+base64Length = ceil(bytes / 3) * 4
+```
+
+规则：
+
+- 第一阶段省略的图片不能恢复；
+- 第二阶段仍不能淘汰 Protected images；
+- 当前提交自身超过数量或总预算时失败；
+- byte quantum 默认 10 MiB；
+- count quantum 使用 1，避免小图片数量限制产生意外大步淘汰。
+
+### 8.6 `error` 模式
+
+`imageOverflowPolicy: error` 时：
+
+- 不进行历史 offload；
+- 完整请求任一 Provider/本地限制超出即失败；
+- 仍可调用 `readImageRequest()` 压缩单图以满足已公布的单图字节限制；
+- 错误不得包含图片内容或 Data URI。
+
+### 8.7 MIME 处理
+
+必须使用 `RequestImageAttachment.mediaType`，不能信任消息 ref 的旧声明。
+
+若派生后的 MIME 不在模型 `mediaTypes` 中：
+
+- 抛出明确 `UNSUPPORTED_CONTENT`；
+- 不引入插件二次转码；
+- 不绕过 Request image 回退原图；
+- 不修改 Harness core。
+
+示例：
+
+```text
+GitHub Copilot model "example" does not accept derived request image type image/webp; accepted types: image/jpeg, image/png.
+```
+
+### 8.8 稳定句柄
+
+每个 Provider 图片前调用：
+
+```js
+requestImageHandleText(version)
+```
+
+典型文本：
+
+```text
+Image sha256:<完整摘要>; request image 1280x720px.
+```
+
+不要自行维护截断摘要格式。
+
+### 8.9 日志与安全
+
+发生 offload 时，每个请求最多记录一条 warning：
+
+```text
+GitHub Copilot model "gpt-4.1" omitted 2 older request images to satisfy maxImages=1.
+```
+
+日志允许：
+
+- 模型 id；
+- 淘汰数量；
+- 命中的限制名称和值。
+
+日志禁止：
+
+- OAuth/Copilot token；
+- attachmentId；
+- 图片名称；
+- Base64；
+- Data URI；
+- 图片内容或用户提示文本。
 
 ---
 
@@ -362,9 +541,9 @@ dataUrl = `data:${mediaType};base64,${Buffer.from(data).toString("base64")}`
 
 文件：`src/host/03-serialize.js`
 
-### 纯文本兼容性
+### 9.1 普通用户消息
 
-纯文本消息必须继续保持当前字符串形状：
+纯文本必须继续使用字符串：
 
 ```json
 {
@@ -373,22 +552,17 @@ dataUrl = `data:${mediaType};base64,${Buffer.from(data).toString("base64")}`
 }
 ```
 
-不要把所有文本请求都改成 content array，以免改变 Provider 缓存和兼容行为。
-
-### 带图片的用户消息
-
-按原始 block 顺序生成：
+图文消息保持原 block 顺序：
 
 ```json
 {
   "role": "user",
   "content": [
     { "type": "text", "text": "Describe this image" },
+    { "type": "text", "text": "Image sha256:...; request image 1280x720px." },
     {
       "type": "image_url",
-      "image_url": {
-        "url": "data:image/png;base64,..."
-      }
+      "image_url": { "url": "data:image/png;base64,..." }
     }
   ]
 }
@@ -396,20 +570,34 @@ dataUrl = `data:${mediaType};base64,${Buffer.from(data).toString("base64")}`
 
 要求：
 
-- 图片和文本顺序不能被 `flattenText()` 改写；
-- 仅有图片、没有文本时也合法；
-- `system` 和 `assistant` 历史中的 image 第一版明确拒绝；
-- 第一版 Chat Completions `tool-result` image 明确拒绝，不要静默删除。
+- 纯文本 wire 与 v0.3.10 完全兼容；
+- 图文顺序不被 `flattenText()` 改写；
+- 仅图片消息合法；
+- unknown/plugin blocks 不得造成图片静默丢失。
 
-推荐函数：
+### 9.2 工具结果图片
 
-```js
-async function serializeChatUserContent(blocks, imageResolver)
-async function serializeMessages(messages, imageResolver)
-async function serializeRequest(options, wire, imageResolver)
+Chat wire 中 `role: tool` 保持文本内容，图片转为后续 user 图片输入。
+
+并行 tool calls 有协议顺序约束：所有连续 `role: tool` 结果必须先发完，不能在两个 tool 结果之间插入 user 消息。因此：
+
+```text
+assistant(tool calls A, B)
+tool(A text)
+tool(B text)
+user(
+  "Image associated with tool call A:", handle A, image A,
+  "Image associated with tool call B:", handle B, image B
+)
 ```
 
-由于读取附件是异步的，序列化函数需要变为 async，adapter request 中必须 `await`。
+必须用固定文本中的 `tool_call_id` 保留精确关联。一个连续工具结果组只产生一个跟随 user 消息，但按工具分段，不能使用无归属的泛化说明。
+
+### 9.3 仍然拒绝
+
+- system 消息中的 image；
+- assistant 消息中的 image；
+- 无法关联 `toolCallId` 的工具图片。
 
 ---
 
@@ -417,269 +605,416 @@ async function serializeRequest(options, wire, imageResolver)
 
 文件：`src/host/05-responses-api.js`
 
-用户图片格式：
+普通用户图片：
 
 ```json
 {
   "role": "user",
   "content": [
     { "type": "input_text", "text": "Describe this image" },
-    {
-      "type": "input_image",
-      "image_url": "data:image/png;base64,..."
-    }
+    { "type": "input_text", "text": "Image sha256:...; request image 1280x720px." },
+    { "type": "input_image", "image_url": "data:image/png;base64,..." }
   ]
 }
 ```
 
-推荐函数：
+工具图片必须采用 Copilot 官方兼容形状：
 
-```js
-async function serializeResponsesMessages(messages, imageResolver)
-async function serializeResponsesRequest(options, wire, imageResolver)
+```text
+function_call_output(call-1, "text result")
+user:
+  input_text "Image associated with tool call call-1:"
+  input_text <request image handle>
+  input_image <data URI>
 ```
 
-第一版范围：
+原因：Responses 的 `function_call_output` 当前只支持文本 output，Copilot 官方客户端也将工具图片拆成后续 user input。
 
-- 支持 user message image；
-- 拒绝 system/assistant image；
-- 暂不实现 tool-result image；
-- 保留现有 tool call、reasoning 和 stream translation 行为不变。
+要求：
 
-不能因为加入图片而修改 Responses SSE 解析代码。
+- 每个工具调用保留精确 call-id 关联；
+- 多张图保持工具结果内部顺序；
+- 现有 assistant output、function_call、reasoning 和 SSE translation 不变；
+- system/assistant image 继续拒绝。
 
 ---
 
-## 11. 模型级视觉限制
+## 11. Adapter 请求入口
 
-对整个请求历史中的图片执行：
+文件：`src/host/08-adapter.js`
 
-### 数量
+请求顺序：
 
-```js
-if (vision.maxImages !== undefined && imageCount > vision.maxImages) {
-  throw new LlmError(..., "UNSUPPORTED_CONTENT")
-}
-```
+1. 解析本次 connection snapshot；
+2. 获取 catalog 中的精确 model entry；
+3. 选择 Chat 或 Responses wire format；
+4. 递归检查任何 user/tool-result image；
+5. 要求模型明确包含 `image` modality；
+6. 动态解析 `ctx.get("attachments")`；
+7. 运行共享 Request image 投影；
+8. serializer 生成 Provider body；
+9. `JSON.stringify()`；
+10. 发起网络请求并翻译 stream。
 
-这里的数量应统计本次发送给 Provider 的完整 request history，不只统计最新消息。
-
-### 单图大小
-
-```js
-stored.data.byteLength <= vision.maxImageBytes
-```
-
-### MIME
-
-```js
-vision.mediaTypes.includes(stored.ref.mediaType)
-```
-
-错误信息必须包含：
-
-- 模型 id；
-- 当前值；
-- Provider 限制；
-- 不包含 Base64 数据。
-
-示例：
+缺少 AttachmentStore：
 
 ```text
-GitHub Copilot model "gpt-4.1" accepts at most 1 image per request; this request contains 2.
+GitHub Copilot image input requires the durable attachment service
+code = UNSUPPORTED_CONTENT
 ```
+
+模型不支持图片：
 
 ```text
-GitHub Copilot model "claude-sonnet-4.6" does not accept image/gif.
+GitHub Copilot model "<id>" does not support image input.
+code = UNSUPPORTED_CONTENT
 ```
 
-### 已知 UX 限制
-
-DSH composer 只知道全局 attachment 限制，不知道每个模型的 Copilot 限制。因此图片可能先进入缩略图列表，在 adapter 发送前才因 3 MiB/数量/MIME 限制失败。
-
-不要通过 DOM hack 修改 composer。第一版记录并接受该限制。
+Text-only 请求不解析 AttachmentStore，也不承担图片转换成本。
 
 ---
 
 ## 12. 模型刷新与缓存
 
-现有插件已监听：
+继续复用现有：
 
 ```text
 credentials/updated
+  → 清除 token exchange cache
+  → 清除 catalog cache
+  → registration.replace([PROVIDER])
+  → llm/adapters-updated
+  → 浏览器重新读取 session.models
 ```
 
-并通过：
+新增设置变化必须在下一次请求生效：
 
-```js
-registration.replace([PROVIDER])
-```
+- overflow policy；
+- 默认像素预算；
+- Base64 总预算；
+- byte quantum；
+- 静态 catalog。
 
-发出：
+不得创建第二套模型 catalog cache。
 
-```text
-llm/adapters-updated
-```
-
-视觉能力来自 catalog entry，因此登录、退出、凭据变化后必须和模型列表一起刷新。
-
-新增视觉字段后要确认：
-
-- `catalogCache` 清除；
-- `listModels()` 返回新 modalities；
-- 已打开浏览器自动重新请求 `session.models`；
-- 不需要页面刷新。
-
-不要创建第二套模型缓存。
+`readImageRequest()` 的变体缓存由 AttachmentStore 管理；插件只保留每请求 Map，不创建跨请求图片缓存。
 
 ---
 
-## 13. 视觉能力测试清单
+## 13. 错误语义
 
-建议新增：
+错误信息必须包含足够诊断信息，但不含图片内容。
+
+### 当前用户图片数量超限
 
 ```text
-tests/vision-catalog.test.mjs
-tests/vision-chat-serialize.test.mjs
-tests/vision-responses-serialize.test.mjs
-tests/vision-adapter.test.mjs
+GitHub Copilot model "gpt-4.1" accepts at most 1 image per request; the current user message contains 2 protected images.
 ```
 
-### Catalog 测试
+### 当前用户图片与最新工具图片冲突
+
+```text
+GitHub Copilot model "gpt-4.1" cannot retain both the current user image and the latest tool-result image within its 1-image request limit.
+```
+
+### 本地 Base64 总预算
+
+```text
+GitHub Copilot image input for model "example" exceeds the configured 20971520-byte inline request budget after protected images are retained.
+```
+
+### MIME
+
+```text
+GitHub Copilot model "example" does not accept derived request image type image/webp.
+```
+
+### Strict 模式
+
+```text
+GitHub Copilot model "example" image request exceeds maxImages=1 while imageOverflowPolicy is "error".
+```
+
+错误 code 使用 `UNSUPPORTED_CONTENT`，除非底层 AttachmentStore 已返回更具体且稳定的 attachment error。
+
+---
+
+## 14. 测试计划
+
+### 14.1 Catalog 测试
 
 覆盖：
 
-1. `supports.vision=true` → `['text', 'image']`。
-2. `supports.vision=false` → `['text']`。
-3. `supports.vision` 缺失，即使有 `limits.vision` 也只声明文本。
-4. 视觉大小、数量、MIME 正确映射。
-5. 非法限制被忽略。
-6. 不按模型名字推断能力。
+1. `supports.vision=true` → `[text, image]`；
+2. false/缺失 → `[text]`；
+3. 仅有 `limits.vision` 不启用图片；
+4. size/count/MIME 映射；
+5. 非法限制忽略；
+6. 不按名称/family 推断；
+7. 静态显式 image 配置；
+8. 静态 text-only 禁止 vision limits；
+9. 动态成功优先于静态 fallback。
 
-### Chat payload 测试
-
-覆盖：
-
-- 纯文本 wire 与修改前完全一致；
-- 文本 + PNG；
-- 图片 + 文本 + 图片的顺序；
-- 仅图片；
-- system/assistant image 拒绝；
-- tool-result image 拒绝。
-
-### Responses payload 测试
+### 14.2 Request image 投影测试
 
 覆盖：
 
-- `input_text`；
-- `input_image` data URI；
+- 调用 `readImageRequest()` 而非 `readImage()`；
+- max bytes/pixels policy；
+- AbortSignal；
+- Promise.all 并发准备；
+- 相同 attachmentId 只派生一次；
+- 相同 attachmentId 出现两次按两张 Provider 图片计数；
+- 派生 mediaType/bytes 为权威值；
+- unsupported derived MIME；
+- 第一阶段省略图片不读取；
+- 第二阶段按 Base64 精确长度；
+- 第一阶段省略后不恢复；
+- 不修改原始 messages/blocks。
+
+### 14.3 Overflow 测试
+
+覆盖：
+
+- `error` 模式完整失败；
+- 默认 offload oldest；
+- 最近人类消息图片受保护；
+- 当前用户消息自身超限；
+- 最新工具图片替代旧工具图片；
+- 工具图片不能替代当前用户图片；
+- 当前用户 + 最新工具不可共存时失败；
+- count quantum = 1；
+- byte quantum = 10 MiB；
+- 每请求最多一条安全 warning。
+
+### 14.4 Chat payload 测试
+
+覆盖：
+
+- 纯文本 wire 完全不变；
+- text + image；
+- image + text + image 顺序；
+- image-only；
+- request image handle；
+- 单工具图片；
+- 并行工具结果先连续 tool，再分段 user images；
+- 嵌套 tool-result 图片；
+- system/assistant image 拒绝。
+
+### 14.5 Responses payload 测试
+
+覆盖：
+
+- `input_text` + `input_image`；
+- `function_call_output` 只含文本；
+- 后续 user 图片包含 call-id marker；
+- 多工具关联；
 - Responses-only visual model；
-- 现有 reasoning/tools 字段保持不变。
+- reasoning/tools 字段不变；
+- SSE translator 测试不回归。
 
-### AttachmentResolver 测试
+### 14.6 最新 Harness 集成测试
 
-覆盖：
+在 `0.1.1-rc.2` 环境验证：
 
-- 同一 attachment 只读取一次；
-- AbortSignal 传递；
-- 使用存储层真实 MIME；
-- 缺少 attachment service；
-- 数量、大小、MIME 超限。
+1. Composer paste/drop；
+2. AttachmentRail；
+3. 历史刷新；
+4. `/goal` 携带图片；
+5. `/plan` 携带图片；
+6. `read_image` 读取工作区图片；
+7. MCP 图片结果；
+8. ACP/Code Mode 图片；
+9. text-only 路由的历史图片投影；
+10. credentials 更新后的模型能力刷新。
 
-### 浏览器测试
+### 14.7 真实 Copilot smoke
 
-1. 选择视觉 Copilot 模型；
-2. textarea 粘贴 PNG；
-3. AttachmentRail 出现；
-4. 发送成功；
-5. 刷新后历史图片恢复；
-6. 尝试切换文本模型被 Host 拒绝；
-7. 浏览器 console 无 error。
+发布前必须完成：
 
-### 真实 Provider 冒烟测试
+- Chat 用户图片；
+- Chat `read_image` 工具图片；
+- Responses 用户图片；
+- Responses 工具图片；
+- 历史 offload；
+- `/goal` 或 `/plan` 图片；
+- 页面刷新后历史图片恢复。
 
-使用小于 100 KiB 的确定性图片，图片内包含文字：
+测试图片应小而确定，包含可识别文字：
 
 ```text
 VISION_TEST_42
 ```
 
-分别测试：
+---
 
-- 一个 `/chat/completions` 视觉模型；
-- 一个 `/responses` 视觉模型。
+## 15. 实施顺序
 
-模型回答必须识别 `VISION_TEST_42`。
+建议多个 Conventional Commit，一次发布 v0.4.0：
+
+### Commit 1
+
+```text
+chore: target DeepSeek Harness 0.1.1-rc.2
+```
+
+- peer dependencies；
+- lockfile；
+- 构建/测试环境；
+- 校验新公共 API 可用。
+
+### Commit 2
+
+```text
+feat: derive Copilot request images through Harness
+```
+
+- 新 Request image 投影模块；
+- `readImageRequest()`；
+- 稳定句柄；
+- MIME 和单图 policy。
+
+### Commit 3
+
+```text
+feat: offload overflowing historical request images
+```
+
+- settings；
+- strict/offload；
+- Protected images；
+- 两阶段预算；
+- warning。
+
+### Commit 4
+
+```text
+feat: support durable tool-result images
+```
+
+- Chat；
+- Responses；
+- call-id 关联；
+- Harness 原生图片来源。
+
+### Commit 5
+
+```text
+test: cover native Harness image sources
+```
+
+- 单元；
+- 集成 fixtures；
+- 回归。
+
+### Commit 6
+
+```text
+docs: update vision integration guidance
+```
+
+- README/README.zh；
+- CHANGELOG；
+- 本文件最终状态；
+- ADR 引用。
+
+不要发布中间的半完成视觉版本。
+
+---
+
+## 16. v0.4.0 最终验收
+
+必须同时满足：
+
+- Harness 最低基线为 `0.1.1-rc.2`；
+- 动态视觉 catalog 正确；
+- 静态视觉 fallback 仅显式开启；
+- 用户和 tool-result Durable images 均能成为 Request images；
+- Chat 和 Responses 均通过；
+- Request images 使用 Harness 派生与缓存；
+- overflow 默认淘汰旧图片但保护当前用户意图；
+- strict 模式可用；
+- 本地 Base64 资源预算可配置；
+- 历史图片不因临时 offload 被删除；
+- OAuth、reasoning、tools、stream translation 无回归；
+- 最新 Harness 集成测试通过；
+- 真实 Copilot smoke 全部通过；
+- Host/浏览器无未处理异常。
+
+发布流程：
+
+```bash
+npm run build
+npm test
+npm run check
+git diff --stat
+git diff
+npm run deploy
+# 重启 dsh web，硬刷新浏览器，执行真实 smoke
+npm run pack:local
+```
+
+更新 `CHANGELOG.md` 后使用 minor release：
+
+```bash
+npm version minor
+```
+
+任何门禁失败都不得声称功能完成或发布 v0.4.0。
 
 ---
 
 # Part B：部分文档理解设计
 
-## 14. 为什么不放进 Copilot LLM adapter
+## 17. 文档能力为什么不放进 Copilot adapter
 
-当前 DSH browser prompt wire 只有：
+文档理解与视觉 adapter 是两个独立工作流。
 
-```ts
-type PromptContentPart =
-  | { type: 'text'; text: string }
-  | { type: 'image'; mediaType; data; name? }
+当前 Harness 原生 prompt 图片路径不等于通用文件上传协议。PDF、DOCX、XLSX 不应伪装成 image，也不应通过 Copilot adapter 私有上传。
+
+文档能力应由独立工具插件提供：
+
+```text
+read_document(path/range/query)
+  → 通过 Harness fs seam 安全读取工作区文件
+  → 解析为受限结构化文本
+  → 返回任意 LLM 可消费的 Markdown
 ```
 
-`dsh-client-ui-attachment` 也明确只实现图片。PDF、DOCX、XLSX 没有：
+这样它：
 
-- 通用 file block；
-- 输入框文件卡片；
-- Host 文件上传协议；
-- 通用文件持久化引用；
-- 历史文件 renderer。
+- 不依赖 Copilot OAuth；
+- 可服务任意 Provider；
+- 不修改 Composer；
+- 不绕过 workspace/sandbox；
+- 不污染 LLM adapter 职责。
 
-因此不要在 Copilot adapter 中伪造聊天框文件上传，也不要替换整个 Harness Composer。
-
-文档理解应作为独立工具插件，使所有模型都能使用，而不是只服务 Copilot。
+旧交接记录显示该独立项目已在 `dsh-tool-document` 仓库完成 v0.1.0；本仓库本轮不修改该项目。
 
 ---
 
-## 15. 文档插件建议位置
+## 18. 文档工具范围
 
-建议创建独立仓库：
+支持工作区路径中的：
 
-```text
-dsh-tool-document
-```
+- 有文本层的 PDF；
+- DOCX；
+- XLSX；
+- CSV；
+- TXT / Markdown / JSON。
 
-建议 package：
+第一版不支持：
 
-```text
-@deepseek-ai/dsh-tool-document
-```
-
-它应挂载到 Agent preset，而不是 Host 全局层。
-
-初始结构：
-
-```text
-src/
-├── index.ts
-├── tool.ts
-├── resolve-input.ts
-├── limits.ts
-├── extractors/
-│   ├── text.ts
-│   ├── pdf.ts
-│   ├── docx.ts
-│   ├── xlsx.ts
-│   └── csv.ts
-├── render/
-│   ├── markdown.ts
-│   └── truncation.ts
-└── errors.ts
-```
-
-不要把文档解析代码放入当前 Copilot adapter 仓库，除非用户明确要求合并为 monorepo。
+- 聊天输入框直接上传普通文档；
+- 扫描 PDF OCR；
+- `.doc` / `.xls`；
+- PPT/PPTX；
+- 加密/密码文档；
+- 宏、公式或嵌入脚本执行。
 
 ---
 
-## 16. `read_document` 工具接口
+## 19. `read_document` 工具接口
 
 建议输入：
 
@@ -713,20 +1048,20 @@ src/
 }
 ```
 
-返回 Markdown 文本，必须包含：
+返回 Markdown，包含：
 
 - 文件名和 MIME；
 - 实际读取范围；
 - 页码/Sheet/单元格范围；
 - 是否截断；
 - 提取内容；
-- 可供后续调用使用的范围提示。
+- 后续调用建议范围。
 
 ---
 
-## 17. 文件访问安全
+## 20. 文档文件访问安全
 
-必须通过 DSH `ctx.fs`：
+必须通过 Harness `ctx.fs`：
 
 ```js
 const target = await ctx.fs.resolve(...)
@@ -734,7 +1069,7 @@ const info = await ctx.fs.stat(target, signal)
 const data = await ctx.fs.readBytes(target, signal, byteLimit)
 ```
 
-不要直接使用 Node `fs.readFile(path)` 绕过：
+不得直接使用 Node `fs.readFile(path)` 绕过：
 
 - workspace confinement；
 - sandbox policy；
@@ -743,35 +1078,32 @@ const data = await ctx.fs.readBytes(target, signal, byteLimit)
 - cancellation；
 - byte limit。
 
-文档工具必须遵守当前 session 的 workspace 和 sandbox policy，参考 DSH `tool-fs/read-image.ts` 的 resolve/read 模式。
-
 ---
 
-## 18. 支持格式和解析策略
+## 21. 文档格式策略
 
 ### TXT / Markdown / JSON
 
 - UTF-8 严格解码；
-- JSON 可格式化，但不能执行；
+- JSON 只格式化、不执行；
 - 控制最大字符数。
 
 ### CSV
 
-- 自动识别常见分隔符或允许配置；
+- 识别常见分隔符或允许配置；
 - 输出 Markdown table；
-- 限制行、列、单元格数量；
+- 限制行、列和单元格数；
 - 公式样式文本视为普通字符串。
 
 ### PDF
 
 推荐 `pdfjs-dist`：
 
-- 只提取文本层；
+- 仅提取文本层；
 - 保留页码；
 - 支持页码范围；
-- 页面间加入明确边界；
-- 第一版不做 OCR；
-- 加密 PDF 返回明确错误。
+- 页面间有明确边界；
+- 扫描 PDF 和加密 PDF 返回明确错误。
 
 ### DOCX
 
@@ -780,8 +1112,8 @@ const data = await ctx.fs.readBytes(target, signal, byteLimit)
 - 段落、标题、列表；
 - 基础表格；
 - 链接文本；
-- 忽略宏、脚本、嵌入 OLE；
-- ZIP 解包必须限制膨胀大小和 entry 数量。
+- 忽略宏、脚本和 OLE；
+- 限制 ZIP 膨胀大小和 entry 数。
 
 ### XLSX
 
@@ -791,25 +1123,14 @@ const data = await ctx.fs.readBytes(target, signal, byteLimit)
 - 显示值；
 - 公式文本和缓存值；
 - 指定 range；
-- Markdown/CSV 输出；
-- 禁止执行公式、外部连接、宏；
-- 限制 Sheet、行、列和单元格总量。
-
-### 不支持
-
-第一版明确拒绝：
-
-```text
-.doc .xls .ppt .pptx encrypted PDF scanned-only PDF
-```
-
-错误必须说明可行替代方案，例如转换为 DOCX/XLSX 或对扫描 PDF 先 OCR。
+- 不执行公式、外部连接或宏；
+- 限制 Sheet、行、列和总单元格。
 
 ---
 
-## 19. 文档资源限制
+## 22. 文档资源限制
 
-建议默认值：
+建议默认：
 
 ```text
 单文件最大：20 MiB
@@ -829,171 +1150,58 @@ XLSX 最大 Sheet：20
 - 恶意共享字符串表；
 - 宏和嵌入对象；
 - 公式注入；
-- 无限/极大 worksheet dimension；
+- 极大 worksheet dimension；
 - NUL 文件名和异常 Unicode；
-- 取消信号被忽略。
+- 忽略取消信号。
 
-超过输出上限时必须截断并返回下一次建议范围，而不是静默丢失。
+超过输出上限时应返回截断标记和下一次建议范围，不得静默丢失。
 
 ---
 
-## 20. 文档工具测试
+## 23. 文档工具测试
 
-### 单元测试 fixtures
-
-准备最小确定性 fixtures：
+Fixtures：
 
 - UTF-8 TXT；
 - 多页文本 PDF；
 - 无文本层 PDF；
-- 含段落和表格的 DOCX；
-- 两个 Sheet、公式和合并单元格的 XLSX；
+- 段落和表格 DOCX；
+- 两个 Sheet、公式和合并单元格 XLSX；
 - CSV；
 - 加密/损坏文件；
 - ZIP bomb 模拟结构。
 
-### 安全测试
+安全测试：
 
 - workspace 外路径拒绝；
-- symlink escape 拒绝；
+- symlink escape；
 - byte cap；
 - abort；
 - 解包限制；
 - 行列/页数限制；
 - 不执行宏或公式。
 
-### 工具集成测试
+集成测试：
 
-- Agent 能调用 `read_document`；
-- 结果包含来源范围；
+- Agent 可调用 `read_document`；
+- 结果含来源范围；
 - 大文档返回截断标记；
-- 任意 LLM provider 都能消费结果；
+- 任意 LLM Provider 可消费；
 - 不依赖 Copilot OAuth。
 
 ---
 
-## 21. 真正的聊天框文件上传（后续、需用户批准）
+## 24. 真正的聊天框通用文件上传
 
-如果用户以后要求像图片一样把 PDF/DOCX/XLSX 拖入聊天框，需要修改 DSH 核心：
+如果未来要求像图片一样将 PDF/DOCX/XLSX 拖入聊天框，需要另行批准 Harness core 范围，包括：
 
 1. `FileAttachmentRef`；
 2. `FileBlock`；
 3. PromptContentPart `file` wire；
 4. 通用 attachment store；
-5. FileRail 和历史文件卡片；
+5. FileRail 与历史卡片；
 6. session authorization/read；
 7. fork/export/persistence；
 8. adapter 或 extraction service。
 
-在没有明确批准前，不要实现 DOM paste hack、私有 composer 或绕过 session.prompt 的自定义上传。
-
----
-
-## 22. 推荐实施顺序
-
-### ✅ PR/Commit 1：视觉 catalog（已完成 v0.3.0）
-
-- 解析 `supports.vision` 和 limits；
-- `modelInfo/resolveModel` modalities；
-- catalog 单元测试（12 项）。
-
-### ✅ PR/Commit 2：AttachmentResolver（已完成 v0.3.0）
-
-- 动态 attachment service；
-- request cache（按 attachmentId 去重）；
-- MIME/size/count 校验；
-- 单元测试（15 项）。
-
-### ✅ PR/Commit 3：Chat Completions 图片（已完成 v0.3.0）
-
-- async serializer；
-- user image content（image_url 数组，纯文本保持 string 兼容）；
-- 拒绝 system/assistant/tool-result 图片；
-- 单元测试（11 项）。
-
-### ✅ PR/Commit 4：Responses 图片（已完成 v0.3.0）
-
-- `input_image`；
-- Responses-only model 测试（9 项）；
-- 保持现有 stream translator 不变。
-
-### ⬜ PR/Commit 5：DSH 集成和浏览器测试（待手动验证）
-
-- paste/drop；
-- rail；
-- Host model gate；
-- history reload；
-- model switch refusal。
-
-### ⬜ PR/Commit 6：真实 Copilot smoke（需要真实账号）
-
-- chat visual model；
-- responses visual model；
-- 小图片文字识别。
-
-### ✅ 独立项目：文档工具（已完成 v0.1.0，见 `dsh-tool-document` 仓库）
-
-已完成并提交，不要和 adapter 改动混在一个提交中。
-
----
-
-## 23. 最终验收标准
-
-### 视觉
-
-- `/models` 明确支持 vision 的模型声明 `['text', 'image']`。
-- 其他模型明确声明 `['text']`。
-- 用户能粘贴/拖拽图片并在 rail 中看到。
-- Chat 和 Responses 两种视觉请求成功。
-- 模型限制有明确错误。
-- 历史图片刷新后仍显示。
-- 有图片历史时不能切换文本模型。
-- OAuth 登录/退出后模型和能力自动刷新。
-- 浏览器和 Host 无未处理异常。
-
-### 文档工具
-
-- 能读取 PDF 文本层、DOCX、XLSX、CSV、文本文件。
-- 使用 `ctx.fs` 并遵守 sandbox。
-- 有严格资源限制和截断说明。
-- 不执行宏、公式或外部对象。
-- 与 Copilot OAuth 解耦，可供任意模型使用。
-- 不伪装成聊天框原生文件上传。
-
----
-
-## 24. 开发完成后的发布要求
-
-1. 更新 `CHANGELOG.md`。
-2. 视觉能力属于 minor release：
-
-   ```bash
-   npm version minor
-   ```
-
-3. 完整检查：
-
-   ```bash
-   npm run check
-   ```
-
-4. Git commit/tag 后部署：
-
-   ```bash
-   npm run deploy
-   ```
-
-5. 重启：
-
-   ```bash
-   dsh web
-   ```
-
-6. 浏览器硬刷新并完成真实 smoke。
-7. 生成 tgz：
-
-   ```bash
-   npm run pack:local
-   ```
-
-任何一项测试失败，都不得声称功能完成或发布新版本。
+在没有明确批准前，不实现 DOM paste hack、私有 Composer 或绕过 session prompt 的自定义上传。
