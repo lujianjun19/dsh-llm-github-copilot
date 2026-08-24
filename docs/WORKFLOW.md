@@ -33,8 +33,17 @@ flowchart TD
         MERGEPR --> PULLMAIN["git checkout main\ngit pull origin main"]
     end
 
+    subgraph PREGH["🧪 发布前 GitHub 源安装测试"]
+        PULLMAIN --> CLEANGH["清理 profile slot\n删除 package.json 条目\n删除 node_modules/@lujianjun19\n临时设置 git URL 重写（HTTPS 授权）"]
+        CLEANGH --> TESTGH["测试 GitHub 源安装（装 main 源码）\ndsh plugin --profile web add\ngithub:lujianjun19/dsh-llm-github-copilot -w"]
+        TESTGH --> VERIFYGH{"验证清单\n• 源码构建 lib/ 成功\n• cordis.patch.yml 存在\n• client.js id 正确\n• undici/deps 可 resolve\n• dump-config 识别插件"}
+        VERIFYGH -- ❌ --> FIXGH["直接修复\n回到编辑阶段（未打 tag，无需升版）"]
+        FIXGH --> CODE
+        VERIFYGH -- ✅ --> CLEANUPGH["清理 git URL 重写\n（移除临时 token 注入）"]
+    end
+
     subgraph RELEASE["🏷️ 发布阶段"]
-        PULLMAIN --> CHANGELOG["更新 CHANGELOG.md\n添加版本条目"]
+        CLEANUPGH --> CHANGELOG["更新 CHANGELOG.md\n添加版本条目"]
         CHANGELOG --> COMMITCL["git commit\ndocs: update CHANGELOG for vX.Y.Z"]
         COMMITCL --> NPMVER["npm version patch|minor|major\n① preversion: npm test + git diff\n② 更新 package.json version\n③ version: npm run build && git add lib/\n④ 创建 git commit + tag"]
         NPMVER --> PUSHTAG["git push main\ngit push vX.Y.Z tag"]
@@ -44,23 +53,17 @@ flowchart TD
         PUSHTAG --> TRIGGER["Release workflow 触发\n(push v* tag)"]
         TRIGGER --> CISTEPS["① npm ci\n② npm run build\n③ npm test\n④ 校验 package.json version == tag\n⑤ npm publish (OIDC Trusted Publishing)\n⑥ gh release create"]
         CISTEPS --> CIPUB{发布成功?}
-        CIPUB -- ❌ --> HOTFIX["修复问题\n重新打 patch tag"]
+        CIPUB -- ❌ --> HOTFIX["修复问题\ntag 未 publish 可移动重推；\n已 publish 则重打 patch tag"]
         HOTFIX --> TRIGGER
     end
 
-    subgraph POSTTEST["🧪 发布后安装测试"]
+    subgraph POSTTEST["🧪 发布后 npm 安装测试"]
         CIPUB -- ✅ --> WAITCI["等待 CI: Release workflow\ncompleted | success"]
-        WAITCI --> CLEAN["清理 profile slot\n删除 package.json 条目\n删除 node_modules/@lujianjun19\n清理 pnpm-lock.yaml 条目"]
-
-        CLEAN --> TESTNPM["测试 npmjs 安装\ndsh plugin --profile web add\n@lujianjun19/dsh-llm-github-copilot"]
+        WAITCI --> CLEAN["清理 profile slot\n删除 package.json 条目\n删除 node_modules/@lujianjun19\n新版本加入 minimumReleaseAgeExclude"]
+        CLEAN --> TESTNPM["测试 npmjs 安装\ndsh plugin --profile web add\n@lujianjun19/dsh-llm-github-copilot@latest"]
         TESTNPM --> VERIFYNPM{"验证清单\n• version 正确\n• cordis.patch.yml 存在\n• client.js id 正确\n• undici/deps 可 resolve\n• dump-config 识别插件"}
         VERIFYNPM -- ❌ --> HOTFIX
-
-        VERIFYNPM -- ✅ --> CLEAN2["再次清理 profile slot"]
-        CLEAN2 --> TESTGH["测试 GitHub 安装\ndsh plugin --profile web add\ngithub:lujianjun19/dsh-llm-github-copilot -w"]
-        TESTGH --> VERIFYGH{"验证清单\n• version 正确\n• cordis.patch.yml 存在\n• client.js id 正确\n• undici/deps 可 resolve\n• dump-config 识别插件"}
-        VERIFYGH -- ❌ --> HOTFIX
-        VERIFYGH -- ✅ --> DONE
+        VERIFYNPM -- ✅ --> DONE
     end
 
     DONE([✅ 发布完成])
@@ -68,6 +71,7 @@ flowchart TD
     style EDIT fill:#e8f4fd,stroke:#2196F3
     style DEPLOY fill:#e8f5e9,stroke:#4CAF50
     style BRANCH fill:#fff3e0,stroke:#FF9800
+    style PREGH fill:#e0f2f1,stroke:#009688
     style RELEASE fill:#fce4ec,stroke:#E91E63
     style CI fill:#f3e5f5,stroke:#9C27B0
     style POSTTEST fill:#e0f2f1,stroke:#009688
@@ -87,3 +91,24 @@ flowchart TD
 4. 用户确认后再次调用 `get_token.py` 取回已缓存的 token（`gho_…`），
    缓存位于 `/tmp/.pi_github_token`，同一 OS 会话内后续调用直接复用、无需再授权。
 5. token 只经环境变量传递给 `git push` / GitHub API，绝不回显或写入日志。
+
+## 安装测试顺序（GitHub 源测试前置）
+
+安装测试拆成两处，**GitHub 源安装测试提前到发布前**：
+
+1. **发布前 GitHub 源安装测试**（BRANCH & PR 合并后、RELEASE 打 tag 前）：
+   - 此时 main 已含本次改动但尚未打 tag，`github:` 安装直接拉取 main 源码并
+     在 profile 内构建 `lib/`。
+   - 若验证失败，**直接回到编辑阶段修复**（尚未打 tag、未升版本、未 publish，
+     修复成本最低），修好后重新走 EDIT → DEPLOY → BRANCH & PR。
+   - 通过后再进入 RELEASE，避免把已知有问题的构建打成正式 tag/发布。
+   - 需要 `-w` 与 `pnpm-workspace.yaml` 的 `allowBuilds`，以及一次性的 git URL
+     重写（HTTPS 授权）；测试后立即清理该重写。
+
+2. **发布后 npm 安装测试**（CI publish 成功后）：
+   - 只验证 npmjs 发布产物（tarball 已由 CI 构建，无需源码构建）。
+   - 新版本刚发布时会被 pnpm 的 `minimumReleaseAge` 供应链策略拦截并回退到旧版；
+     需先把新版本加入 profile `pnpm-workspace.yaml` 的 `minimumReleaseAgeExclude`，
+     再用 `@latest` 或显式 `@X.Y.Z` 安装。
+   - npm 测试失败进入 HOTFIX：tag 未被 publish 时可移动 tag 重推；已 publish 则
+     不可复用版本号，必须重打 patch tag。
