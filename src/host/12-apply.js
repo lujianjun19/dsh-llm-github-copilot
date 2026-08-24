@@ -132,7 +132,9 @@ function apply(ctx, config) {
   // external credentials-file edit), invalidate both token/catalog caches and
   // re-commit the adapter route. That emits llm/adapters-updated; every open
   // browser model directory then refetches session.models automatically.
-  ctx.on("credentials/updated", (ref) => {
+  // NOTE: Harness 0.1.1-rc.2+ emits credentials/reference-updated; the old
+  // credentials/updated event no longer fires.
+  ctx.on(CREDENTIALS_EVENT, (ref) => {
     if (ref !== options().oauthTokenEnv) return;
     exchangeCache = void 0;
     catalogCache = void 0;
@@ -203,13 +205,13 @@ function apply(ctx, config) {
       if (generation !== authGeneration) return;
       if (result.state === "done") {
         try {
-          // credentials.set emits credentials/updated after its durable
-          // commit; the listener above invalidates caches and refreshes every
-          // open model directory before this flow settles authenticated.
+          // credentials.set triggers credentials/reference-updated after its
+          // durable commit; the listener above invalidates caches and refreshes
+          // every open model directory before this flow settles authenticated.
           await storeRawOAuthToken(result.token);
           // Belt-and-suspenders: clear the caches here too, so a re-login
-          // recovers the catalog even if the credentials/updated fan-out is
-          // missed or races the next model-directory poll.
+          // recovers the catalog even if the credentials/reference-updated
+          // fan-out is missed or races the next model-directory poll.
           exchangeCache = void 0;
           catalogCache = void 0;
           finish("authenticated");
@@ -274,7 +276,7 @@ function apply(ctx, config) {
     authFlow = { state: "signed-out" };
     exchangeCache = void 0;
     catalogCache = void 0;
-    // credentials.unset emits credentials/updated after its durable commit;
+    // credentials.unset triggers credentials/reference-updated after its durable commit;
     // the shared listener refreshes model directories back to the fallback
     // catalog. An already-absent credential needs no additional announcement.
     if (existing !== void 0) await credentials.unset(ref);
