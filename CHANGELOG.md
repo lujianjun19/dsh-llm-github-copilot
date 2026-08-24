@@ -2,6 +2,51 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
+## [Unreleased]
+
+### Changed
+
+- **DeepSeek Harness baseline raised to `0.1.1-rc.2`.** Peer/dev dependencies
+  now require `@deepseek-ai/dsh-*` `^0.1.1-rc.2` (with `@deepseek-ai/cordis`
+  `^4.0.1`). The vision path depends on APIs added in `0.1.1-rc.2`
+  (`AttachmentStore.readImageRequest`, `offloadRequestImagesWithPolicy`,
+  `requestImageHandleText`); earlier releases cannot run this adapter.
+
+### Added
+
+- **Request images derived through the Harness attachment service.** A new
+  `prepareRequestImages()` projection module replaces the old
+  `createImageResolver`: it derives each request image via
+  `AttachmentStore.readImageRequest()` under a per-route pixel/byte policy,
+  validates the derived MIME type, and emits a stable per-image handle
+  (`requestImageHandleText`). Image occurrences are counted for the provider
+  limit while attachment I/O is de-duplicated by attachment id.
+- **Image overflow policy.** New `imageOverflowPolicy` setting
+  (`offload-oldest` default, or `error`). `offload-oldest` replaces the oldest
+  eligible request images in two phases (conservative estimate, then exact
+  Base64 length) while protecting the most recent user message and the latest
+  tool-result batch; a stable placeholder marks omitted images and the durable
+  history is never changed. `error` rejects any request that exceeds the model
+  image count or the inline byte budget. New settings:
+  `defaultImagePixelBudget`, `maxInlineRequestImageBytes`,
+  `inlineImageOffloadByteQuantum`.
+- **Tool-result images.** Images from `read_image`, MCP servers, and other
+  tools are now sent to vision models. Chat Completions keeps the `role:tool`
+  text and appends the images in a following `role:user` message, tagged per
+  `tool_call_id`; the Responses API mirrors the official Copilot shape
+  (`function_call_output` text + a following `role:user` `input_image`).
+- **Static vision catalog.** Static fallback models may declare
+  `inputModalities` and `vision` limits explicitly (used only when live
+  `/models` discovery fails). Capability is never inferred from a model name.
+
+### Notes
+
+- System and assistant image content remain rejected with
+  `UNSUPPORTED_CONTENT`.
+- Documentation: `docs/VISION_AND_DOCUMENT_HANDOFF.zh-CN.md` is the v0.4.0
+  implementation authority; `docs/adr/0001-request-image-overflow-policy.md`
+  records the overflow-policy decision.
+
 ## [0.3.10] - 2026-08-19
 
 ### Fixed

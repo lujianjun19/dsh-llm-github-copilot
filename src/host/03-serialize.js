@@ -92,6 +92,12 @@ async function serializeMessages(messages, imageResolver) {
       continue;
     }
     // User messages: separate tool-result blocks from regular user content.
+    // A single harness message normally carries either tool-results
+    // (source.kind === "tool") or regular user content, not both. When it
+    // carries both, the role:tool wire messages are emitted before the
+    // role:user text so consecutive tool results stay grouped for the wire
+    // (tool messages must directly follow the assistant tool_calls); the
+    // pending tool images then flush after that grouped run.
     const toolResults = message.content.filter((block) => block.type === "tool-result");
     const userBlocks = message.content.filter((block) => block.type !== "tool-result");
 

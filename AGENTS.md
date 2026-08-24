@@ -30,6 +30,18 @@ docs/VISION_AND_DOCUMENT_HANDOFF.zh-CN.md
 
 Do not expand that scope (especially generic composer file upload or DSH core changes) without explicit user approval.
 
+## DeepSeek Harness version dependency
+
+- This plugin targets **`@deepseek-ai/dsh` `0.1.1-rc.2`** and the matching
+  `@deepseek-ai/dsh-*` packages (`^0.1.1-rc.2`), with `@deepseek-ai/cordis`
+  `^4.0.1`. See `peerDependencies` in `package.json`.
+- The vision path depends on APIs introduced in `0.1.1-rc.2`:
+  `AttachmentStore.readImageRequest()`, and `offloadRequestImagesWithPolicy` /
+  `requestImageHandleText` from `@deepseek-ai/dsh-llm`. Earlier releases
+  (`0.1.0-rc.x`) lack these and will not run the current adapter.
+- Do not lower the baseline below `0.1.1-rc.2` without an explicit,
+  user-approved compatibility change.
+
 ## Required workflow
 
 Before editing:
@@ -220,7 +232,7 @@ Expected output for every check: version matches the released tag, `id` is
 
 ## DeepSeek Harness compatibility
 
-- Target the installed `@deepseek-ai/dsh` rc.6 APIs unless a compatibility change is explicitly approved.
+- Target the installed `@deepseek-ai/dsh` `0.1.1-rc.2` APIs unless a compatibility change is explicitly approved (see “DeepSeek Harness version dependency” above).
 - Prefer existing Harness services, slots, UI primitives, locale, credentials, settings, attachments, and model invalidation events.
 - Do not patch DeepSeek Harness core from this repository.
 - Browser UI must use Harness primitives/tokens and support English/Chinese with English fallback.

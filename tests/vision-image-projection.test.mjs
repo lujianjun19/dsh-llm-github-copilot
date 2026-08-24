@@ -301,7 +301,63 @@ test('error mode: maxImages exceeded → UNSUPPORTED_CONTENT', async () => {
   )
 })
 
+// ── error mode: inline byte budget ───────────────────────────────────────────
+
+test('error mode: total derived base64 exceeds maxInlineRequestImageBytes → UNSUPPORTED_CONTENT', async () => {
+  // Two images, each derives to 64 bytes → ~88 base64 bytes each → ~176 total.
+  // maxInlineRequestImageBytes = 100 forces the byte budget to be exceeded.
+  const msgs = [
+    userMsg([imageBlock('b1')], 'model'),
+    userMsg([imageBlock('b2')])
+  ]
+  const store = makeStore({ b1: {}, b2: {} })
+  await assert.rejects(
+    () => prepareRequestImages({
+      messages: msgs, attachmentStore: store, signal: undefined,
+      ...defaultOpts({ overflowPolicy: 'error', maxInlineRequestImageBytes: 100 })
+    }),
+    (err) => {
+      assert.equal(err.code, 'UNSUPPORTED_CONTENT')
+      assert.ok(/inline request budget/.test(err.message), 'error should mention the inline byte budget')
+      return true
+    }
+  )
+})
+
+test('error mode: derived bytes within budget → succeeds', async () => {
+  const msgs = [userMsg([imageBlock('ok1')])]
+  const store = makeStore({ ok1: {} })
+  const result = await prepareRequestImages({
+    messages: msgs, attachmentStore: store, signal: undefined,
+    ...defaultOpts({ overflowPolicy: 'error', maxInlineRequestImageBytes: 20 * 1024 * 1024 })
+  })
+  assert.ok(result.resolve(makeRef('ok1')), 'image within budget should resolve')
+})
+
 // ── protected images ──────────────────────────────────────────────────────────
+
+test('current user image + latest tool image conflict → message names both', async () => {
+  // maxImages=1, but the latest human message has one image AND the latest
+  // tool batch has one image → both protected, cannot both be retained.
+  const msgs = [
+    userMsg([imageBlock('u1')]),
+    toolMsg('c1', [textBlock('shot'), imageBlock('t1')])
+  ]
+  const store = makeStore({ u1: {}, t1: {} })
+  const model = { id: 'gpt-4.1', vision: { maxImages: 1 } }
+  await assert.rejects(
+    () => prepareRequestImages({
+      messages: msgs, attachmentStore: store, signal: undefined,
+      ...defaultOpts({ model })
+    }),
+    (err) => {
+      assert.equal(err.code, 'UNSUPPORTED_CONTENT')
+      assert.ok(/current user image/.test(err.message), 'message should mention the current user image')
+      assert.ok(/tool-result image/.test(err.message), 'message should mention the tool-result image')
+      return true
+    }
+  )
+})
 
 test('current user image alone exceeds maxImages → UNSUPPORTED_CONTENT', async () => {
   // User sends 2 images in one message, but model only accepts 1

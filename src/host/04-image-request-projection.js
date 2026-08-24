@@ -17,6 +17,9 @@
  *     Re-run offload with actual base64 byte lengths.
  *     If any protected image would be dropped → throw UNSUPPORTED_CONTENT.
  *
+ * Strict `error` mode skips offloading and instead rejects any request that
+ * exceeds the model image count or the inline byte budget (exact bytes).
+ *
  * The returned resolve(ref) function looks up by attachmentId. Offloaded images
  * return null; their placeholder text is already in the projected messages.
  *
@@ -25,84 +28,84 @@
 
 const BASE64_EXPANSION = (bytes) => Math.ceil(bytes / 3) * 4;
 
+/**
+ * Walk every image block in message order, including nested tool-result content,
+ * invoking `visit(attachmentRef, sourceKind)` per occurrence. The single shared
+ * traversal used by occurrence counting, unique-ref collection, and protection.
+ */
+function walkImages(messages, visit) {
+  for (const msg of messages) {
+    const kind = msg.source?.kind;
+    for (const block of msg.content) {
+      if (block.type === "image") {
+        visit(block.attachment, kind);
+      } else if (block.type === "tool-result") {
+        for (const inner of block.content) {
+          if (inner.type === "image") visit(inner.attachment, kind);
+        }
+      }
+    }
+  }
+}
+
 /** Collect all image AttachmentRefs by occurrence order (same id may appear multiple times). */
 function collectImageOccurrences(messages) {
   const refs = [];
-  for (const msg of messages) {
-    for (const block of msg.content) {
-      if (block.type === "image") {
-        refs.push(block.attachment);
-      } else if (block.type === "tool-result") {
-        for (const inner of block.content) {
-          if (inner.type === "image") refs.push(inner.attachment);
-        }
-      }
-    }
-  }
+  walkImages(messages, (ref) => refs.push(ref));
   return refs;
 }
 
-/** Collect unique AttachmentRefs (by attachmentId) from projected messages for I/O. */
+/** Collect unique AttachmentRefs (by attachmentId) for I/O. */
 function collectUniqueRefs(messages) {
   const seen = new Map();
-  for (const msg of messages) {
-    for (const block of msg.content) {
-      if (block.type === "image" && !seen.has(block.attachment.attachmentId)) {
-        seen.set(block.attachment.attachmentId, block.attachment);
-      } else if (block.type === "tool-result") {
-        for (const inner of block.content) {
-          if (inner.type === "image" && !seen.has(inner.attachment.attachmentId)) {
-            seen.set(inner.attachment.attachmentId, inner.attachment);
-          }
-        }
-      }
-    }
-  }
+  walkImages(messages, (ref) => {
+    if (!seen.has(ref.attachmentId)) seen.set(ref.attachmentId, ref);
+  });
   return [...seen.values()];
 }
 
+/** Set of attachmentIds present in a message list. */
+function attachmentIdSet(messages) {
+  const ids = new Set();
+  walkImages(messages, (ref) => ids.add(ref.attachmentId));
+  return ids;
+}
+
 /**
- * Identify protected attachmentIds that must not be dropped by offload-oldest.
+ * Identify protected attachmentIds that must not be dropped by offload-oldest,
+ * separated by provenance so error messages can name the conflict precisely.
  *
  * Protected set:
  *   1. Images from the last message with source.kind === "user"
  *      (the most recent human-authored turn).
  *   2. Images from the last consecutive run of source.kind === "tool" messages
  *      at the tail of the history (the latest tool-result batch).
+ *
+ * @returns {{ userIds: Set<string>, toolIds: Set<string>, all: Set<string> }}
  */
 function identifyProtectedIds(messages) {
-  const ids = new Set();
+  const userIds = new Set();
+  const toolIds = new Set();
 
-  // Last human-authored message
+  // Last human-authored message.
   for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    if (msg.source?.kind === "user") {
-      for (const block of msg.content) {
-        if (block.type === "image") ids.add(block.attachment.attachmentId);
-      }
+    if (messages[i].source?.kind === "user") {
+      walkImages([messages[i]], (ref) => userIds.add(ref.attachmentId));
       break;
     }
   }
 
-  // Last consecutive run of tool-result messages at the tail
+  // Last consecutive run of tool-result messages at the tail.
   let lastToolIdx = -1;
   for (let i = messages.length - 1; i >= 0; i--) {
     if (messages[i].source?.kind === "tool") lastToolIdx = i;
     else break;
   }
   if (lastToolIdx >= 0) {
-    for (let i = lastToolIdx; i < messages.length; i++) {
-      for (const block of messages[i].content) {
-        if (block.type === "tool-result") {
-          for (const inner of block.content) {
-            if (inner.type === "image") ids.add(inner.attachment.attachmentId);
-          }
-        }
-      }
-    }
+    walkImages(messages.slice(lastToolIdx), (ref) => toolIds.add(ref.attachmentId));
   }
 
-  return ids;
+  return { userIds, toolIds, all: new Set([...userIds, ...toolIds]) };
 }
 
 /**
@@ -147,19 +150,48 @@ async function prepareRequestImages({
   const protectedIds = identifyProtectedIds(messages);
   const allOccurrences = collectImageOccurrences(messages);
 
-  // ── Strict mode: reject on any overflow ────────────────────────────────────
-  if (overflowPolicy === "error") {
-    const count = allOccurrences.length;
-    if (vision?.maxImages !== undefined && count > vision.maxImages) {
-      throw new LlmError(
-        `GitHub Copilot model "${model.id}" image request exceeds maxImages=${vision.maxImages} while imageOverflowPolicy is "error".`,
+  /**
+   * Run one offload pass and assert every protected image survived.
+   * @param {readonly Message[]} input - messages to project.
+   * @param {(ref: object) => number} byteLength - base64 length estimator.
+   * @returns {readonly Message[]} the projected messages.
+   */
+  const offloadAndVerify = (input, byteLength) => {
+    const projected = offloadRequestImagesWithPolicy(input, {
+      representation: "base64",
+      maxImages: vision?.maxImages,
+      maxBytes: maxInlineRequestImageBytes,
+      byteQuantum: inlineImageOffloadByteQuantum,
+      countQuantum: 1,
+      byteLength
+    });
+    const kept = attachmentIdSet(projected);
+    for (const id of protectedIds.all) {
+      if (!kept.has(id)) throw protectedRetentionError();
+    }
+    return projected;
+  };
+
+  /**
+   * Build the error thrown when protected images cannot all be retained. When a
+   * current user image and a latest tool-result image are both protected, name
+   * both; otherwise report the inline budget generically.
+   */
+  const protectedRetentionError = () => {
+    if (protectedIds.userIds.size > 0 && protectedIds.toolIds.size > 0
+      && vision?.maxImages !== undefined) {
+      return new LlmError(
+        `GitHub Copilot model "${model.id}" cannot retain both the current user image and the latest tool-result image within its ${vision.maxImages}-image request limit.`,
         "UNSUPPORTED_CONTENT"
       );
     }
-    // Byte check deferred to after readImageRequest (exact bytes)
-  }
+    return new LlmError(
+      `GitHub Copilot model "${model.id}" cannot retain protected images within the configured inline request budget.`,
+      "UNSUPPORTED_CONTENT"
+    );
+  };
 
-  // ── Check: current user submission alone must not exceed image count ────────
+  // ── Guard: the current user submission alone must fit the image count ───────
   // Count images only in the last human-authored message itself.
   const lastUserMsg = [...messages].reverse().find(m => m.source?.kind === "user");
   const currentUserImageCount = lastUserMsg ? collectImageOccurrences([lastUserMsg]).length : 0;
@@ -170,34 +202,27 @@ async function prepareRequestImages({
     );
   }
 
+  // ── Strict mode: reject on image-count overflow before any I/O ──────────────
+  if (overflowPolicy === "error" && vision?.maxImages !== undefined
+    && allOccurrences.length > vision.maxImages) {
+    throw new LlmError(
+      `GitHub Copilot model "${model.id}" image request exceeds maxImages=${vision.maxImages} while imageOverflowPolicy is "error".`,
+      "UNSUPPORTED_CONTENT"
+    );
+  }
+
   // ── Phase 1: conservative offload (no I/O) ──────────────────────────────────
   let projectedMessages = messages;
-  if (overflowPolicy === "offload-oldest" && (vision?.maxImages !== undefined || maxInlineRequestImageBytes != null)) {
-    projectedMessages = offloadRequestImagesWithPolicy(messages, {
-      representation: "base64",
-      maxImages: vision?.maxImages,
-      maxBytes: maxInlineRequestImageBytes,
-      byteQuantum: inlineImageOffloadByteQuantum,
-      countQuantum: 1,
-      byteLength: (ref) => BASE64_EXPANSION(Math.min(ref.bytes, requestPolicy.maxBytes))
-    });
-
-    // Verify protected images survived
-    const keptIds = new Set(collectUniqueRefs(projectedMessages).map(r => r.attachmentId));
-    for (const id of protectedIds) {
-      if (!keptIds.has(id)) {
-        throw new LlmError(
-          `GitHub Copilot model "${model.id}" cannot retain protected images within the configured inline request budget.`,
-          "UNSUPPORTED_CONTENT"
-        );
-      }
-    }
+  if (overflowPolicy === "offload-oldest") {
+    projectedMessages = offloadAndVerify(
+      messages,
+      (ref) => BASE64_EXPANSION(Math.min(ref.bytes, requestPolicy.maxBytes))
+    );
   }
 
   // ── Phase 2: derive request images (parallel I/O) ─────────────────────────
   const uniqueRefs = collectUniqueRefs(projectedMessages);
   const requestImages = new Map(); // attachmentId → RequestImageAttachment
-
   await Promise.all(
     uniqueRefs.map(async (ref) => {
       const version = await attachmentStore.readImageRequest(ref, requestPolicy, signal);
@@ -205,7 +230,7 @@ async function prepareRequestImages({
     })
   );
 
-  // Validate derived MIMEs
+  // Validate derived MIMEs against the model allowlist.
   if (vision?.mediaTypes !== undefined) {
     for (const [, version] of requestImages) {
       if (!vision.mediaTypes.includes(version.mediaType)) {
@@ -217,30 +242,25 @@ async function prepareRequestImages({
     }
   }
 
-  // ── Phase 3: exact offload using real base64 lengths ─────────────────────
-  if (overflowPolicy === "offload-oldest") {
-    projectedMessages = offloadRequestImagesWithPolicy(projectedMessages, {
-      representation: "base64",
-      maxImages: vision?.maxImages,
-      maxBytes: maxInlineRequestImageBytes,
-      byteQuantum: inlineImageOffloadByteQuantum,
-      countQuantum: 1,
-      byteLength: (ref) => {
-        const version = requestImages.get(ref.attachmentId);
-        return version != null ? BASE64_EXPANSION(version.bytes) : 0;
-      }
-    });
+  const exactBase64Length = (ref) => {
+    const version = requestImages.get(ref.attachmentId);
+    return version != null ? BASE64_EXPANSION(version.bytes) : 0;
+  };
 
-    // Verify protected images survived phase 3
-    const keptIds3 = new Set(collectUniqueRefs(projectedMessages).map(r => r.attachmentId));
-    for (const id of protectedIds) {
-      if (!keptIds3.has(id)) {
-        throw new LlmError(
-          `GitHub Copilot model "${model.id}" cannot retain protected images within the configured inline request budget.`,
-          "UNSUPPORTED_CONTENT"
-        );
-      }
+  if (overflowPolicy === "error") {
+    // Enforce the inline byte budget on exact derived bytes.
+    const totalBase64 = collectUniqueRefs(projectedMessages).reduce(
+      (sum, ref) => sum + exactBase64Length(ref), 0
+    );
+    if (totalBase64 > maxInlineRequestImageBytes) {
+      throw new LlmError(
+        `GitHub Copilot image input for model "${model.id}" exceeds the configured ${maxInlineRequestImageBytes}-byte inline request budget while imageOverflowPolicy is "error".`,
+        "UNSUPPORTED_CONTENT"
+      );
     }
+  } else {
+    // ── Phase 3: exact offload using real base64 lengths ────────────────────
+    projectedMessages = offloadAndVerify(projectedMessages, exactBase64Length);
   }
 
   // ── Logging ────────────────────────────────────────────────────────────────
