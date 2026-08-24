@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
+## [0.4.2] - 2026-08-24
+
+### Fixed
+
+- **Model catalog never refreshed on credential changes (Harness 0.1.1-rc.2+).**
+  Harness 0.1.1-rc.2 renamed the credentials change event from
+  `credentials/updated` to `credentials/reference-updated`; the old name is no
+  longer emitted. The plugin's cache-invalidation `ctx.on()` listener used the
+  old name and therefore never fired, meaning that logout, login, or any
+  external credential edit would not clear the exchange/catalog caches.
+  The listener is updated to use the correct event name via a new exported
+  `CREDENTIALS_EVENT` constant. Combined with the short negative-TTL and
+  explicit-clear-on-login from v0.4.1, the model list now recovers immediately
+  on any credential change without restarting `dsh web`.
+  _(Regression originally reported in community PR #10.)_
+
 ## [0.4.1] - 2026-08-24
 
 ### Fixed
