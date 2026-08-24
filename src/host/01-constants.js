@@ -40,6 +40,13 @@ const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 300000;
 /** Refresh the short-lived Copilot token this long before it expires. */
 const TOKEN_REFRESH_MARGIN_MS = 120000;
 
+/**
+ * The Harness event emitted after a stored credential reference is written or
+ * removed. In Harness 0.1.1-rc.2+ this replaced the legacy
+ * `credentials/updated` event, which is no longer emitted.
+ */
+const CREDENTIALS_EVENT = "credentials/reference-updated";
+
 /** How long a discovered model catalog is reused before re-interrogating the endpoint. */
 const CATALOG_TTL_MS = 300000;
 
