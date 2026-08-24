@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
+## [0.4.1] - 2026-08-24
+
+### Fixed
+
+- **Model catalog stuck at 0 after logout → re-login.** The catalog cache used
+  one 5-minute TTL for every result, including the empty catalog written while
+  logged out or on a discovery failure. After a re-login the model picker could
+  stay empty for the full TTL if the `credentials/updated` invalidation was
+  missed or raced the next poll. Empty/failed catalogs now use a short 5-second
+  TTL (`NEGATIVE_CATALOG_TTL_MS`) via a pure `catalogCacheEntry` policy, and
+  sign-in clears the exchange/catalog caches directly. The model list now
+  recovers within seconds—no `dsh web` restart required.
+
+> Note: `0.4.0` was published to npm but its GitHub tag/release were removed in
+> favor of `0.4.1`, which supersedes it.
+
 ## [0.4.0] - 2026-08-24
 
 ### Changed
