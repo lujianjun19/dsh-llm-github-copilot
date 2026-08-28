@@ -63,7 +63,29 @@ Before editing:
 git status --short
 ```
 
-After editing:
+### Always work on a new branch
+
+**Never commit directly to `main`.** Create a branch for the change before the
+first commit, and land it through a PR:
+
+```bash
+git checkout -b fix/<name>     # or feat/<name>, docs/<name>, refactor/<name>
+```
+
+This holds for documentation-only changes too. If you notice you have already
+committed to `main`, recover before pushing:
+
+```bash
+git checkout -b fix/<name>     # carries the commits
+git checkout main && git reset --hard origin/main
+git checkout fix/<name>
+```
+
+One branch carries one coherent change, **including its documentation updates**.
+Do not merge the code PR and then follow up with a separate docs PR — between
+those two merges `main` documents behaviour it does not have.
+
+### After editing
 
 ```bash
 npm run build
@@ -72,6 +94,37 @@ npm run check
 git diff --stat
 git diff
 ```
+
+### Documentation sync check — required before every commit
+
+Code and docs drift silently: nothing fails when a document keeps describing a
+version, signature, or constraint that the change just invalidated, and the
+next agent reads that stale text as authority. Before committing, grep the
+facts you changed across **every** document and update whatever no longer holds:
+
+```bash
+# Replace the pattern with the facts this change actually altered:
+# version numbers, API signatures, exported names, event names, limits, defaults
+rg -n '<changed-fact>' README.md README.zh.md AGENTS.md CONTEXT.md \
+  CHANGELOG.md docs/ --glob '!node_modules'
+```
+
+Walk this list explicitly — each file owns different claims:
+
+| Document | Owns | Update when |
+| --- | --- | --- |
+| `README.md` / `README.zh.md` | User-facing requirements, install, config | Supported versions, options, commands, or behaviour change. Both languages, always together. |
+| `AGENTS.md` | Agent contract, workflow, version dependency | Rules, supported versions, required patterns, or release steps change. |
+| `CONTEXT.md` | Domain vocabulary | A concept is introduced, renamed, or its boundary moves. |
+| `docs/WORKFLOW.md` | The development-cycle diagram | Any step in the edit → release cycle changes. |
+| `docs/VISION_AND_DOCUMENT_HANDOFF.zh-CN.md` | Vision design authority | A vision API, signature, limit, or policy it documents changes. Cited as authority — stale signatures here actively mislead. |
+| `docs/adr/` | Accepted decisions | A decision is superseded — add a new ADR, do not silently rewrite an old one. |
+| `CHANGELOG.md` | Released history | At release time (see “Releases”). |
+
+When a document is a point-in-time record (a handoff spec, an ADR), add a
+scoped note rather than rewriting history.
+
+### Commit and deploy
 
 Commit source and generated `lib/` artifacts together. Use Conventional Commit-style messages.
 

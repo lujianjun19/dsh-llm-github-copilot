@@ -6,13 +6,18 @@ flowchart TD
 
     subgraph EDIT["✏️ 编辑阶段"]
         PRECHECK["git status --short\n检查工作区状态"]
-        PRECHECK --> CODE["编辑 src/host/*.js\n或 src/client/*.js"]
+        PRECHECK --> NEWBRANCH["⭐ git checkout -b <type>/<name>\n首次提交前必须建分支\n绝不直接提交 main\n（纯文档变更同样适用）"]
+        NEWBRANCH --> CODE["编辑 src/host/*.js\n或 src/client/*.js"]
         CODE --> BUILD["npm run build\n合并 fragments → lib/"]
         BUILD --> TEST["npm test\n单元测试"]
         TEST --> FAIL{通过?}
         FAIL -- ❌ --> CODE
         FAIL -- ✅ --> CHECK["npm run check\n构建产物完整性校验"]
-        CHECK --> DIFF["git diff --stat\ngit diff\n审查变更"]
+        CHECK --> DOCSYNC["⭐ 文档同步检查\nrg 本次改变的事实：\n版本号 / API 签名 / 导出名\n事件名 / 限制 / 默认值"]
+        DOCSYNC --> DOCOK{文档均已同步?}
+        DOCOK -- ❌ --> FIXDOC["同步更新文档\nREADME×2 / AGENTS / CONTEXT\ndocs/WORKFLOW / 视觉规格 / adr"]
+        FIXDOC --> DOCSYNC
+        DOCOK -- ✅ --> DIFF["git diff --stat\ngit diff\n审查变更"]
     end
 
     subgraph DEPLOY["🚀 本地部署（可选）"]
@@ -22,10 +27,9 @@ flowchart TD
         LOCALOK -- ❌ --> CODE
     end
 
-    subgraph BRANCH["🌿 分支 & PR 阶段"]
-        LOCALOK -- ✅ --> NEWBRANCH["git checkout -b feat/<name>\n为本次变更创建功能分支"]
-        NEWBRANCH --> GITADD["git add -A"]
-        GITADD --> GITCOMMIT["git commit\nConventional Commit 格式"]
+    subgraph BRANCH["🌿 PR 阶段"]
+        LOCALOK -- ✅ --> GITADD["git add -A\n（分支已在编辑阶段创建）"]
+        GITADD --> GITCOMMIT["git commit\nConventional Commit 格式\n代码与文档同一个 PR"]
         GITCOMMIT --> GETTOKEN["github-auth skill\npython3 get_token.py\n① 有缓存 → 直接返回\n② 无缓存 → Device Flow\n   后台运行，读 stderr\n   展示“Open in browser + 设备码”\n   等用户手动浏览器授权\n   用户确认后再取缓存 token\n   缓存至 /tmp/.pi_github_token"]
         GETTOKEN --> PUSHBRANCH["git push https://TOKEN@github.com/...\npush feature branch"]
         PUSHBRANCH --> CREATEPR["GitHub API: POST /repos/.../pulls\ntitle / head / base=main / body"]
@@ -77,7 +81,55 @@ flowchart TD
     style POSTTEST fill:#e0f2f1,stroke:#009688
 ```
 
-## GitHub Device Flow 授权（BRANCH & PR 阶段）
+## 分支纪律（EDIT 阶段首步）
+
+**每次修改都必须在新分支上，绝不直接提交 `main`。** 分支创建位置在
+编辑阶段的**最前面**（而非测试通过之后），因为真正要防的是“随手提交到
+`main`”，而不是“忽略推送”：
+
+```bash
+git checkout -b fix/<name>     # 或 feat/ 、docs/ 、refactor/
+```
+
+纯文档变更同样适用。若发现已经误提交到 `main`，推送前挖回：
+
+```bash
+git checkout -b fix/<name>              # 带走已有提交
+git checkout main && git reset --hard origin/main
+git checkout fix/<name>
+```
+
+一个分支承载一个完整变更，**包括它的文档更新**。不要先合并代码 PR、
+再补一个文档 PR——两次合并之间，`main` 上的文档描述的是它并不具备的行为。
+
+## 文档同步检查（EDIT 阶段门禁）
+
+代码与文档会**无声地**错位：文档继续描述一个已被本次变更推翻的版本、
+签名或约束时，没有任何测试会失败，而下一个 agent 会把这段陈旧文字当作权威。
+提交前把本次**改变的事实**在全部文档里 grep 一遍：
+
+```bash
+# 把 pattern 换成本次真正改动的事实：
+# 版本号 / API 签名 / 导出名 / 事件名 / 限制值 / 默认值
+rg -n '<changed-fact>' README.md README.zh.md AGENTS.md CONTEXT.md \
+  CHANGELOG.md docs/ --glob '!node_modules'
+```
+
+逐个走一遍下表——每份文档拥有不同的断言：
+
+| 文档 | 拥有 | 何时更新 |
+| --- | --- | --- |
+| `README.md` / `README.zh.md` | 用户可见的依赖、安装、配置 | 支持版本、选项、命令或行为变化。中英文必须同时改。 |
+| `AGENTS.md` | agent 契约、工作流、版本依赖 | 规则、支持版本、强制模式或发布步骤变化。 |
+| `CONTEXT.md` | 领域术语 | 概念新增、改名，或边界移动。 |
+| `docs/WORKFLOW.md` | 开发周期图 | edit → release 周期的任何一步变化。 |
+| `docs/VISION_AND_DOCUMENT_HANDOFF.zh-CN.md` | 视觉设计权威 | 它记载的视觉 API、签名、限制或策略变化。它被引用为权威，陈旧签名会主动误导。 |
+| `docs/adr/` | 已接受的决策 | 决策被取代时新增一篇 ADR，不要默默改写旧篇。 |
+| `CHANGELOG.md` | 已发布历史 | 发布时（见 RELEASE 阶段）。 |
+
+对于**时点快照类**文档（交接规格、ADR），追加一段范围说明，而不是改写历史。
+
+## GitHub Device Flow 授权（PR 阶段）
 
 推送分支、创建/合并 PR、推 tag 前需要 GitHub token。采用 `github-auth` skill
 的 **Device Flow**，且**必须由用户手动授权**：
@@ -96,11 +148,11 @@ flowchart TD
 
 安装测试拆成两处，**GitHub 源安装测试提前到发布前**：
 
-1. **发布前 GitHub 源安装测试**（BRANCH & PR 合并后、RELEASE 打 tag 前）：
+1. **发布前 GitHub 源安装测试**（PR 合并后、RELEASE 打 tag 前）：
    - 此时 main 已含本次改动但尚未打 tag，`github:` 安装直接拉取 main 源码并
      在 profile 内构建 `lib/`。
    - 若验证失败，**直接回到编辑阶段修复**（尚未打 tag、未升版本、未 publish，
-     修复成本最低），修好后重新走 EDIT → DEPLOY → BRANCH & PR。
+     修复成本最低），修好后重新走 EDIT → DEPLOY → PR。
    - 通过后再进入 RELEASE，避免把已知有问题的构建打成正式 tag/发布。
    - 需要 `-w` 与 `pnpm-workspace.yaml` 的 `allowBuilds`，以及一次性的 git URL
      重写（HTTPS 授权）；测试后立即清理该重写。
