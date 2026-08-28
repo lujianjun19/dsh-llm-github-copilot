@@ -32,15 +32,28 @@ Do not expand that scope (especially generic composer file upload or DSH core ch
 
 ## DeepSeek Harness version dependency
 
-- This plugin targets **`@deepseek-ai/dsh` `0.1.1-rc.2`** and the matching
-  `@deepseek-ai/dsh-*` packages (`^0.1.1-rc.2`), with `@deepseek-ai/cordis`
-  `^4.0.1`. See `peerDependencies` in `package.json`.
+- This plugin supports **`@deepseek-ai/dsh` `0.1.1-rc.2` and `0.1.2-alpha.1`**
+  (`^0.1.1-rc.2 || 0.1.2-alpha.1` for the matching `@deepseek-ai/dsh-*`
+  packages), with `@deepseek-ai/cordis` `^4.0.1`. See `peerDependencies` in
+  `package.json`.
+- `0.1.2-alpha.1` made three breaking `@deepseek-ai/dsh-llm` changes: `CallId`
+  → `ToolCallId`, `requestImageHandleText(version)` → `(ref, version, access?)`,
+  and a now-required `policy.placeholder(ref)` on
+  `offloadRequestImagesWithPolicy`. **Every API whose shape differs between
+  supported versions must go through `llmCompat()` in
+  `src/host/01-llm-compat.js`.** Never bind a version-specific symbol with a
+  static named import: a missing export fails ESM linking and takes down the
+  entire plugin tree at boot, before any code runs.
+- It also split the client packages: `@deepseek-ai/dsh-client-runtime` is gone
+  in `0.1.2-alpha.1`, where `slots` comes from `@deepseek-ai/dsh-client-ui-renderer`
+  and `sessions` from `@deepseek-ai/dsh-api-session-controller`. `dsh.client.inject`
+  lists all three; both loaders skip inject entries absent from the graph.
 - The vision path depends on APIs introduced in `0.1.1-rc.2`:
   `AttachmentStore.readImageRequest()`, and `offloadRequestImagesWithPolicy` /
   `requestImageHandleText` from `@deepseek-ai/dsh-llm`. Earlier releases
   (`0.1.0-rc.x`) lack these and will not run the current adapter.
-- Do not lower the baseline below `0.1.1-rc.2` without an explicit,
-  user-approved compatibility change.
+- Do not lower the baseline below `0.1.1-rc.2`, and do not drop `0.1.2-alpha.1`,
+  without an explicit, user-approved compatibility change.
 
 ## Required workflow
 
@@ -232,7 +245,7 @@ Expected output for every check: version matches the released tag, `id` is
 
 ## DeepSeek Harness compatibility
 
-- Target the installed `@deepseek-ai/dsh` `0.1.1-rc.2` APIs unless a compatibility change is explicitly approved (see “DeepSeek Harness version dependency” above).
+- Target APIs common to `@deepseek-ai/dsh` `0.1.1-rc.2` and `0.1.2-alpha.1`; route anything whose shape differs between them through `llmCompat()` (see “DeepSeek Harness version dependency” above).
 - Prefer existing Harness services, slots, UI primitives, locale, credentials, settings, attachments, and model invalidation events.
 - Do not patch DeepSeek Harness core from this repository.
 - Browser UI must use Harness primitives/tokens and support English/Chinese with English fallback.
