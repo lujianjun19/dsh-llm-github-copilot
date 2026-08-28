@@ -187,6 +187,27 @@ Do not echo or log the token value.
 
 ## Releases
 
+### Releases require explicit user approval — never assume it
+
+**Do not run `npm version`, create a tag, or push a tag without the user
+asking for a release in that turn.** Publishing is irreversible: a released
+version number can never be reused for changed runtime code, so a premature
+tag burns a version and forces a throwaway patch release.
+
+"Fix X", "implement X", or "finish X" is **not** a release request. Merging a
+PR is not a release request either. When the work is merged and green, stop and
+ask:
+
+> Ready to release? This would be vX.Y.Z.
+
+Then wait for an explicit yes. Only these count as approval: the user asks to
+release, to tag, to publish, or to "走发布流程".
+
+A merged, unreleased change is a perfectly good resting state — it is already
+installable from GitHub source.
+
+### Once approved
+
 - Update `CHANGELOG.md` before a release.
 - Use SemVer with `npm version patch|minor|major`.
 - Build a local release artifact with `npm run pack:local`.
@@ -233,9 +254,30 @@ rm -rf node_modules/@lujianjun19
 
 ### 2. Test — install from npmjs
 
-```bash
-dsh plugin --profile web add @lujianjun19/dsh-llm-github-copilot
+Install the **exact released version**. `@latest` is unreliable immediately
+after a release: pnpm's `minimumReleaseAge` supply-chain policy still resolves
+it to the previous version — even when the new one is already listed in
+`minimumReleaseAgeExclude` — and then writes that *older* version into the
+profile's dependency range, so the verification in step 4 checks the wrong
+build.
+
+First allow the just-published version through the age policy, by appending
+`|| X.Y.Z` to this package's entry under `minimumReleaseAgeExclude` in
+`~/.dsh/profiles/web/pnpm-workspace.yaml`:
+
+```yaml
+minimumReleaseAgeExclude:
+  - '@lujianjun19/dsh-llm-github-copilot@0.4.2 || 0.4.3 || 0.4.4'
 ```
+
+Then install by exact version:
+
+```bash
+dsh plugin --profile web add @lujianjun19/dsh-llm-github-copilot@X.Y.Z
+```
+
+If step 4 reports the previous version, the install silently fell back — clean
+the slot (step 1) and repeat with the explicit version rather than `@latest`.
 
 ### 3. Test — install from GitHub source
 

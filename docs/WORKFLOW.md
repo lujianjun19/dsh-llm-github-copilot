@@ -47,7 +47,10 @@ flowchart TD
     end
 
     subgraph RELEASE["🏷️ 发布阶段"]
-        CLEANUPGH --> CHANGELOG["更新 CHANGELOG.md\n添加版本条目"]
+        CLEANUPGH --> ASKREL["⭐ 停下来，询问用户\n‘是否现在发布？将为 vX.Y.Z’\n已合并未发布是合法终态"]
+        ASKREL --> APPROVED{用户明确同意发布?}
+        APPROVED -- ❌ --> STOPREL([⏸️ 停在此处\n仍可从 GitHub 源安装])
+        APPROVED -- ✅ --> CHANGELOG["更新 CHANGELOG.md\n添加版本条目"]
         CHANGELOG --> COMMITCL["git commit\ndocs: update CHANGELOG for vX.Y.Z"]
         COMMITCL --> NPMVER["npm version patch|minor|major\n① preversion: npm test + git diff\n② 更新 package.json version\n③ version: npm run build && git add lib/\n④ 创建 git commit + tag"]
         NPMVER --> PUSHTAG["git push main\ngit push vX.Y.Z tag"]
@@ -64,7 +67,7 @@ flowchart TD
     subgraph POSTTEST["🧪 发布后 npm 安装测试"]
         CIPUB -- ✅ --> WAITCI["等待 CI: Release workflow\ncompleted | success"]
         WAITCI --> CLEAN["清理 profile slot\n删除 package.json 条目\n删除 node_modules/@lujianjun19\n新版本加入 minimumReleaseAgeExclude"]
-        CLEAN --> TESTNPM["测试 npmjs 安装\ndsh plugin --profile web add\n@lujianjun19/dsh-llm-github-copilot@latest"]
+        CLEAN --> TESTNPM["测试 npmjs 安装\ndsh plugin --profile web add\n@lujianjun19/...@X.Y.Z\n⚠️ 必须显式版本号，不用 @latest"]
         TESTNPM --> VERIFYNPM{"验证清单\n• version 正确\n• cordis.patch.yml 存在\n• client.js id 正确\n• undici/deps 可 resolve\n• dump-config 识别插件"}
         VERIFYNPM -- ❌ --> HOTFIX
         VERIFYNPM -- ✅ --> DONE
@@ -129,6 +132,22 @@ rg -n '<changed-fact>' README.md README.zh.md AGENTS.md CONTEXT.md \
 
 对于**时点快照类**文档（交接规格、ADR），追加一段范围说明，而不是改写历史。
 
+## 发布必须得到用户明确同意（RELEASE 阶段门禁）
+
+**没有用户在当次对话中明确要求发布，不得执行 `npm version`、不得打 tag、
+不得推 tag。** 发布不可逆：已发布的版本号永远不能再用于变更后的运行时代码，
+提前打 tag 就烧掉一个版本号，并逼出一个一次性的 patch 发布。
+
+「修复 X」「实现 X」「完成 X」**不是**发布请求；合并 PR 也不是。工作合并且
+门禁全绿后，停下来询问：
+
+> 是否现在发布？将为 vX.Y.Z。
+
+然后等待明确的肯定答复。只有用户要求发布 / 打 tag / publish / 「走发布流程」
+才算授权。
+
+**已合并但未发布是一个完全合理的终态**——它已经可以从 GitHub 源安装。
+
 ## GitHub Device Flow 授权（PR 阶段）
 
 推送分支、创建/合并 PR、推 tag 前需要 GitHub token。采用 `github-auth` skill
@@ -160,7 +179,11 @@ rg -n '<changed-fact>' README.md README.zh.md AGENTS.md CONTEXT.md \
 2. **发布后 npm 安装测试**（CI publish 成功后）：
    - 只验证 npmjs 发布产物（tarball 已由 CI 构建，无需源码构建）。
    - 新版本刚发布时会被 pnpm 的 `minimumReleaseAge` 供应链策略拦截并回退到旧版；
-     需先把新版本加入 profile `pnpm-workspace.yaml` 的 `minimumReleaseAgeExclude`，
-     再用 `@latest` 或显式 `@X.Y.Z` 安装。
+     需先把新版本加入 profile `pnpm-workspace.yaml` 的 `minimumReleaseAgeExclude`。
+   - **必须用显式 `@X.Y.Z` 安装，不要用 `@latest`**。实测：即使新版本已在
+     `minimumReleaseAgeExclude` 中，`@latest` 仍会解析到上一个版本，并把那个
+     旧版本写进 profile 的依赖范围，导致验证清单检查的是错误的构建。
+   - 若验证发现版本号不对，说明安装静默回退了：重新清理 profile slot 后用显式
+     版本号重装。
    - npm 测试失败进入 HOTFIX：tag 未被 publish 时可移动 tag 重推；已 publish 则
      不可复用版本号，必须重打 patch tag。
