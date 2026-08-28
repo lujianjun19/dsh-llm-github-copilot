@@ -8,10 +8,17 @@ Sign in with your GitHub account and use every Copilot model — including GPT-4
 
 ## Requirements
 
-- **DeepSeek Harness `0.1.1-rc.2` or newer.** The vision path uses native image
-  APIs (`AttachmentStore.readImageRequest`, `offloadRequestImagesWithPolicy`,
-  `requestImageHandleText`) introduced in `0.1.1-rc.2`; earlier releases will
-  not run this adapter. Upgrade with `npm install -g @deepseek-ai/dsh@latest`.
+- **DeepSeek Harness `0.1.1-rc.2` or `0.1.2-alpha.1`.** Both are supported: the
+  adapter probes the loaded `@deepseek-ai/dsh-llm` and selects the matching
+  calling convention. Note that `0.1.2-alpha.1` renamed `CallId` to
+  `ToolCallId`, changed the `requestImageHandleText` signature, and made the
+  request-image offload placeholder caller-supplied — so **plugin versions
+  `≤ 0.4.2` do not load on `0.1.2-alpha.1`**. Upgrade this plugin together with
+  the harness.
+- The vision path uses native image APIs (`AttachmentStore.readImageRequest`,
+  `offloadRequestImagesWithPolicy`, `requestImageHandleText`) introduced in
+  `0.1.1-rc.2`; `0.1.0-rc.x` and earlier lack them and will not run this
+  adapter. Upgrade with `npm install -g @deepseek-ai/dsh@latest`.
 - Node.js ≥ 24.
 
 ## Install

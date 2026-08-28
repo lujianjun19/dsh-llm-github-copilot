@@ -2,6 +2,11 @@
 
 > 本文件是本仓库视觉功能的实施权威。开始编码前必须完整阅读本文件、仓库根目录 `AGENTS.md`、`CONTEXT.md`，以及 `docs/adr/` 中相关决策。
 
+> **版本范围说明（后补）**：本文描述的是面向 Harness `0.1.1-rc.2` 的 v0.4.0 那一轮
+> 工作，其中的 API 签名按当时基线书写。Harness `0.1.2-alpha.1` 后来修改了其中
+> 几项签名（见 §8.8）。**跨版本差异的 API 一律经由 `src/host/01-llm-compat.js`
+> 的 `llmCompat()` 访问**；本文其余部分的策略、边界与验收标准仍然有效。
+
 ## 0. 状态与目标基线
 
 当前仓库状态：
@@ -498,13 +503,17 @@ GitHub Copilot model "example" does not accept derived request image type image/
 
 ### 8.8 稳定句柄
 
-每个 Provider 图片前调用：
+每个 Provider 图片前调用（**经由 `LLM.requestImageHandle(ref, version)` 适配层**，
+不要直接调用）：
 
 ```js
+// Harness 0.1.1-rc.2
 requestImageHandleText(version)
+// Harness 0.1.2-alpha.1
+requestImageHandleText(ref, version, access?)
 ```
 
-典型文本：
+典型文本（两个版本的措辞不同，以实际加载的 Harness 为准）：
 
 ```text
 Image sha256:<完整摘要>; request image 1280x720px.

@@ -8,10 +8,16 @@ GitHub Copilot LLM 适配器，适用于 [DeepSeek Harness](https://github.com/d
 
 ## 依赖要求
 
-- **DeepSeek Harness `0.1.1-rc.2` 或更高版本。** 视觉链路依赖 `0.1.1-rc.2`
-  新增的原生图片 API（`AttachmentStore.readImageRequest`、
-  `offloadRequestImagesWithPolicy`、`requestImageHandleText`）；旧版本
-  无法运行本适配器。升级命令：`npm install -g @deepseek-ai/dsh@latest`。
+- **DeepSeek Harness `0.1.1-rc.2` 或 `0.1.2-alpha.1`。** 两个版本均受支持：适配器
+  会探测实际加载的 `@deepseek-ai/dsh-llm` 并选择对应的调用约定。注意
+  `0.1.2-alpha.1` 将 `CallId` 更名为 `ToolCallId`、修改了
+  `requestImageHandleText` 的签名，并要求调用方自行提供请求图片的 offload
+  占位符——因此**插件 `0.4.2` 及更早版本无法在 `0.1.2-alpha.1` 上加载**，请与
+  harness 一同升级本插件。
+- 视觉链路依赖 `0.1.1-rc.2` 新增的原生图片 API（`AttachmentStore.readImageRequest`、
+  `offloadRequestImagesWithPolicy`、`requestImageHandleText`）；`0.1.0-rc.x`
+  及更早版本缺少这些 API，无法运行本适配器。升级命令：
+  `npm install -g @deepseek-ai/dsh@latest`。
 - Node.js ≥ 24。
 
 ## 安装
