@@ -2,6 +2,52 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
+## [0.4.3] - 2026-08-28
+
+### Fixed
+
+- **Plugin tree failed to load on DeepSeek Harness `0.1.2-alpha.1`.** That
+  release renamed `CallId` to `ToolCallId` in `@deepseek-ai/dsh-llm`. Because
+  the adapter bound the old name with a static named import, ESM linking failed
+  before any plugin code ran and `dsh web` aborted at boot with
+  `The requested module '@deepseek-ai/dsh-llm' does not provide an export named
+  'CallId'`.
+- **Every image request threw a `TypeError` on `0.1.2-alpha.1`.**
+  `requestImageHandleText(version)` became
+  `requestImageHandleText(ref, version, access?)`; calling it the old way left
+  the version argument undefined (`Cannot read properties of undefined (reading
+  'width')`).
+- **Request-image offload threw a `TypeError` on `0.1.2-alpha.1`.**
+  `offloadRequestImagesWithPolicy` replaced the fixed `OFFLOADED_IMAGE_TEXT`
+  constant with a now-required `policy.placeholder(ref)` callback, so the first
+  real offload failed with `placeholder is not a function`. The stock
+  replacement `offloadedImageText` is supplied when it is available.
+- **A derived request image could exceed the model's published per-image byte
+  limit.** `ImageRequestPolicy.maxBytes` is a target rather than a cap in
+  `0.1.2-alpha.1`: when no encoder-ladder quality meets it, the attachment store
+  returns its smallest output anyway. Derived bytes are now validated after
+  derivation and rejected with `UNSUPPORTED_CONTENT` naming the limit, instead
+  of surfacing an opaque provider rejection.
+
+### Changed
+
+- **Both `0.1.1-rc.2` and `0.1.2-alpha.1` are now supported.** A single feature
+  probe in the new `llmCompat()` (`src/host/01-llm-compat.js`) selects the whole
+  calling convention, since all three breaking changes shipped together.
+  `peerDependencies` accept `^0.1.1-rc.2 || 0.1.2-alpha.1`.
+- **Client package split declared.** `@deepseek-ai/dsh-client-runtime` does not
+  exist in `0.1.2-alpha.1`, where `slots` comes from
+  `@deepseek-ai/dsh-client-ui-renderer` and `sessions` from
+  `@deepseek-ai/dsh-api-session-controller`. `dsh.client.inject` lists all three
+  (both loaders skip inject entries absent from the graph) and the
+  version-specific peers are marked optional.
+
+### Added
+
+- 10 cross-version regression tests (`tests/harness-compat.test.mjs`, 124 total).
+  They exercise `llmCompat()` directly, so one test run covers both calling
+  conventions — something no single `node_modules` tree can do.
+
 ## [0.4.2] - 2026-08-24
 
 ### Fixed
