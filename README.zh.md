@@ -115,6 +115,8 @@ export GITHUB_COPILOT_OAUTH_TOKEN=<your-github-oauth-token>
 
 **视觉支持** — 声明了 `supports.vision: true` 的模型（如 `gpt-4.1`、`gpt-4o`）支持 Harness 产生的所有图片来源：对话框粘贴/拖拽、`/goal` 和 `/plan` 附件、以及工具结果图片（`read_image`、MCP）。图片按模型路由通过 Harness 附件服务（`readImageRequest`）派生，附带稳定句柄，并在两种 wire 协议上发送。当请求超过模型图片数量或本地 Base64 预算时，会优先淘汰较旧的请求图片，同时保护当前用户提交和最新工具结果批次；被省略的图片以稳定占位符标记，不修改持久历史。设置 `imageOverflowPolicy: error` 可改为超限时直接拒绝。
 
+**图片可回取** — 在 Harness `0.1.2-alpha.1` 及以上，模型看到的每张图片都会附带其规范化副本在工具执行环境中的**只读路径**。模型收到的是缩小后的预览，但需要细节时可以自行重新读取完整文件；因超限而被淘汰的图片也从“彻底丢失”变为“可按需取回”。路径经由 Harness 文件系统服务解析，工作区与沙箱限制仍然生效；无法映射时仅省略这段标注，其余行为不变。
+
 **双协议** — 适配器同时支持 OpenAI Chat Completions（`/chat/completions`）和新版 Responses API（`/responses`），根据模型自动选择对应端点。
 
 **推理控制** — 支持声明了推理等级的模型（`gpt-5.x`、Claude 思考预算、Gemini 推理），可传递 `low / medium / high / max` 等级。
