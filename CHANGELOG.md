@@ -2,6 +2,49 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
+## [0.4.5] - 2026-08-28
+
+### Added
+
+- **Request images carry a read-only recovery path.** On Harness
+  `0.1.2-alpha.1` and newer, every image the model sees is annotated with the
+  path of its normalized copy in the tool execution world. The model receives a
+  downscaled preview but can re-read the full file when it needs detail, and an
+  image offloaded to fit a request limit stays recoverable instead of being
+  simply gone — which is what makes oldest-first offload cheap rather than
+  lossy.
+
+  Both halves of the path are provider-owned: the attachment store locates the
+  normalized object, the filesystem provider maps it into the tool world.
+  Workspace and sandbox confinement still apply, and an unmapped path resolves
+  to nothing. Resolution is failure-tolerant by design — the path only enriches
+  model-visible text, so a rejected lookup degrades to the pathless wording
+  rather than failing the request.
+
+- **Model discovery is cancellable.** Harness `0.1.2-alpha.1` passes an
+  `AbortSignal` to the discovery callback; it is now honoured by both the
+  `/models` request and the token exchange behind it.
+
+  A cancelled lookup deliberately does *not* reuse the discovery-failure path,
+  which caches a fallback catalog under a short negative TTL: caching that for
+  a cancellation would empty every model picker for the whole TTL. Cancellation
+  surfaces and leaves the cached catalog untouched, while an ordinary discovery
+  failure keeps its existing fallback behaviour.
+
+### Changed
+
+- The model-catalog policy (TTL cache, credential gate, discovery attempt,
+  static fallback, cancellation) moved out of `apply()` into
+  `createCatalogResolver()`, alongside the discovery parsing it belongs with.
+  `apply()` keeps transport and wiring. Behaviour is unchanged; the policy is
+  now exercisable without a network or a live Harness context, and the
+  negative-TTL fallback gained direct tests.
+
+### Added (tests)
+
+- 19 tests (152 total) covering read-only path resolution and its degradation
+  modes, and the catalog resolver's cache, fallback, and cancellation policy.
+
 ## [0.4.4] - 2026-08-28
 
 ### Fixed
