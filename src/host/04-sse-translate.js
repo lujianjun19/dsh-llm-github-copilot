@@ -83,9 +83,12 @@ function mapFinishReason(reason) {
 function mapUsage(usage) {
   const cacheRead = usage.prompt_tokens_details?.cached_tokens ?? usage.prompt_cache_hit_tokens;
   const reasoning = usage.completion_tokens_details?.reasoning_tokens;
+  const promptTokens = usage.prompt_tokens;
+  const outputTokens = usage.completion_tokens;
   return {
-    inputTokens: usage.prompt_tokens - (cacheRead ?? 0),
-    outputTokens: usage.completion_tokens,
+    inputTokens: promptTokens - (cacheRead ?? 0),
+    outputTokens,
+    ...totalTokensField(usage.total_tokens, promptTokens, outputTokens),
     ...cacheRead !== void 0 ? { cacheReadTokens: cacheRead } : {},
     ...reasoning !== void 0 ? { reasoningTokens: reasoning } : {}
   };

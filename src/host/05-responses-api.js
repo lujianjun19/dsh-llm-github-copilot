@@ -168,6 +168,7 @@ function mapResponsesUsage(usage) {
   return {
     inputTokens: input - (cacheRead ?? 0),
     outputTokens: output,
+    ...totalTokensField(usage?.total_tokens, input, output),
     ...cacheRead !== void 0 ? { cacheReadTokens: cacheRead } : {},
     ...reasoning !== void 0 ? { reasoningTokens: reasoning } : {}
   };

@@ -121,6 +121,8 @@ export GITHUB_COPILOT_OAUTH_TOKEN=<your-github-oauth-token>
 
 **自动刷新 token** — 短期有效的 Copilot API token 在过期前自动续期，无需手动操作。
 
+**本轮 token 用量** — 每次响应都上报 provider 的精确 token 计数（含其自身的总计），因此 Harness 的**本轮用量**面板（`0.1.2-alpha.1` 及以上）能完整展示每一轮的未缓存输入、缓存读取、输出、推理以及缓存命中率。
+
 **设置页面** — 插件在 Harness Web 设置界面新增 **GitHub Copilot** 专属页面（在浏览器中打开 DSH → 点击齿轮图标 → **GitHub Copilot**）。在该页面可以登录、查看认证状态和可用模型列表、退出登录，无需在对话框输入命令。
 
 ## 配置
