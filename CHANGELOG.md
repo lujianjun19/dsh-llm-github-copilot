@@ -2,6 +2,33 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
+## [0.4.4] - 2026-08-28
+
+### Fixed
+
+- **The Turn usage panel never rendered for GitHub Copilot.** Harness
+  `0.1.2-alpha.1` added a per-turn token disclosure whose meter only reports a
+  turn when it can prove an exact total. `TokenUsage.totalTokens` is that proof;
+  without it the meter sums cache buckets instead and requires BOTH
+  `cacheReadTokens` and `cacheWriteTokens`. GitHub reports no cache-write
+  bucket, so every turn hit that fallback, was rejected, and the panel silently
+  stayed hidden.
+
+  `usage.total_tokens` was present on both wire formats all along and is now
+  forwarded, so the panel shows uncached input, cached input, output, reasoning,
+  and the cache hit rate. The total is emitted only when it is a usable count
+  consistent with the buckets already reported — the meter derives
+  `prompt = total - output` and rejects a sample that lands below the known
+  prompt, so an inconsistent total is dropped where the reason can be stated
+  rather than passed through to fail silently.
+
+  Affects `0.1.2-alpha.1` and newer; earlier harness releases have no such panel.
+
+### Added
+
+- 9 tests covering the provider total across both wire formats (133 total),
+  including the pre-fix shape pinned as rejected by the harness acceptance rule.
+
 ## [0.4.3] - 2026-08-28
 
 ### Fixed
