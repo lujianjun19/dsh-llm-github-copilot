@@ -43,12 +43,12 @@ function apply(ctx, config) {
 
   // ── Copilot token exchange cache ─────────────────────────────────────────
   let exchangeCache;
-  const resolveConnection = async () => {
+  const resolveConnection = async (signal) => {
     const raw = await resolveRawOAuthToken();
     if (raw === void 0) throw new LlmError(`GitHub Copilot: no GitHub OAuth token; run /copilot-login or store ${options().oauthTokenEnv}`, "MISSING_CREDENTIAL");
     const cached = exchangeCache;
     if (cached !== void 0 && cached.raw === raw && Date.now() < cached.expiresAtMs - TOKEN_REFRESH_MARGIN_MS) return cached.connection;
-    const exchanged = await exchangeCopilotToken(raw);
+    const exchanged = await exchangeCopilotToken(raw, signal);
     const connection = {
       apiToken: exchanged.apiToken,
       baseUrl: exchanged.baseUrl ?? options().baseURL ?? DEFAULT_BASE_URL
@@ -58,22 +58,13 @@ function apply(ctx, config) {
   };
 
   // ── model catalog discovery ─────────────────────────────────────────────
-  let catalogCache;
-  const catalog = async () => {
-    const configured = options().models;
-    const cached = catalogCache;
-    if (cached !== void 0 && Date.now() < cached.at + cached.ttl) return cached.models;
-    // Never advertise models that cannot be called. In particular, the old
-    // DEFAULT_MODELS fallback made an unauthenticated provider look usable in
-    // every model picker even though every request would fail MISSING_CREDENTIAL.
-    const raw = await resolveRawOAuthToken();
-    if (raw === void 0) {
-      const models = [];
-      catalogCache = catalogCacheEntry(models, Date.now());
-      return models;
-    }
-    try {
-      const connection = await resolveConnection();
+  // Transport lives here; the cache, credential gate, fallback, and
+  // cancellation policy live in createCatalogResolver().
+  const catalog = createCatalogResolver({
+    configuredModels: () => options().models,
+    resolveRawOAuthToken,
+    resolveConnection,
+    fetchModels: async (connection, signal) => {
       const response = await copilotFetch(`${connection.baseUrl}/models`, {
         method: "GET",
         headers: {
@@ -82,25 +73,15 @@ function apply(ctx, config) {
           "copilot-integration-id": INTEGRATION_ID,
           "editor-version": EDITOR_VERSION,
           ...attributionHeaders()
-        }
+        },
+        ...signal !== void 0 ? { signal } : {}
       });
       if (!response.ok) throw new LlmError(`GitHub Copilot /models answered ${response.status}`, "DISCOVERY_FAILED");
-      const discovered = readModelsListing(await response.json());
-      if (discovered !== void 0) {
-        catalogCache = catalogCacheEntry(discovered, Date.now());
-        return discovered;
-      }
-    } catch (error) {
-      ctx.logger.warn(`${name}: model discovery failed; using configured or default catalog`);
-      ctx.logger.warn(error);
-    }
-    // A configured static catalog is only a metadata fallback for an account
-    // that has a credential. Without an explicit catalog, failed token
-    // exchange/discovery advertises no models rather than eight unusable ones.
-    const fallback = configured.length > 0 ? configured : [];
-    catalogCache = catalogCacheEntry(fallback, Date.now());
-    return fallback;
-  };
+      return response.json();
+    },
+    logger: ctx.logger,
+    name
+  });
   const resolveModel = async (provider, model) => {
     const models = await catalog();
     const configured = models.find((entry) => entry.id === model);
@@ -147,7 +128,7 @@ function apply(ctx, config) {
   ctx.on(CREDENTIALS_EVENT, (ref) => {
     if (ref !== options().oauthTokenEnv) return;
     exchangeCache = void 0;
-    catalogCache = void 0;
+    catalog.invalidate();
     registration.replace([PROVIDER]);
   });
   let registeredPolicy = options().retryPolicy;
@@ -157,10 +138,9 @@ function apply(ctx, config) {
     registration.replace([PROVIDER]);
     registeredPolicy = policy;
   };
-  ctx.llm.registerModelDiscovery(NS, async (request) => {
-    const models = await catalog();
-    return models;
-  });
+  // Harness 0.1.2-alpha.1 hands the discovery callback a cancellation signal as
+  // its second argument (0.1.1-rc.2 passes none, so it is simply undefined).
+  ctx.llm.registerModelDiscovery(NS, async (_request, signal) => catalog(signal));
   installSettingsSection(ctx, NS, Config, config, {
     setSource: (source) => {
       current = source;
@@ -223,7 +203,7 @@ function apply(ctx, config) {
           // recovers the catalog even if the credentials/reference-updated
           // fan-out is missed or races the next model-directory poll.
           exchangeCache = void 0;
-          catalogCache = void 0;
+          catalog.invalidate();
           finish("authenticated");
           ctx.logger.info(`${name}: GitHub Copilot sign-in completed; token stored as ${options().oauthTokenEnv}`);
         } catch (error) {
@@ -285,7 +265,7 @@ function apply(ctx, config) {
     clearAuthTimers();
     authFlow = { state: "signed-out" };
     exchangeCache = void 0;
-    catalogCache = void 0;
+    catalog.invalidate();
     // credentials.unset triggers credentials/reference-updated after its durable commit;
     // the shared listener refreshes model directories back to the fallback
     // catalog. An already-absent credential needs no additional announcement.

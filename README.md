@@ -112,7 +112,7 @@ export GITHUB_COPILOT_OAUTH_TOKEN=<your-github-oauth-token>
 
 ## Features
 
-**Model discovery** — available models are fetched live from `https://api.githubcopilot.com/models` on each login and cached for 5 minutes. No static list to maintain.
+**Model discovery** — available models are fetched live from `https://api.githubcopilot.com/models` on each login and cached for 5 minutes. No static list to maintain. On Harness `0.1.2-alpha.1` and newer a discovery started from the Settings page is cancellable, and cancelling leaves the cached catalog as it was rather than emptying the model picker.
 
 **Vision support** — models that declare `supports.vision: true` (e.g. `gpt-4.1`, `gpt-4o`) accept images from every source Harness produces: pasted or dragged images in the composer, `/goal` and `/plan` attachments, and tool-result images (`read_image`, MCP servers). Images are derived per model route through the Harness attachment service (`readImageRequest`), tagged with a stable handle, and sent over both wire protocols. When a request exceeds a model's image count or the local inline byte budget, older request images are offloaded first while the current user submission and the latest tool-result batch are protected; a stable placeholder marks any omitted image without altering the durable history. Set `imageOverflowPolicy: error` to reject over-limit requests instead.
 

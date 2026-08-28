@@ -111,7 +111,7 @@ export GITHUB_COPILOT_OAUTH_TOKEN=<your-github-oauth-token>
 
 ## 功能
 
-**动态模型发现** — 每次登录后从 `https://api.githubcopilot.com/models` 实时拉取可用模型并缓存 5 分钟，无需维护静态列表。
+**动态模型发现** — 每次登录后从 `https://api.githubcopilot.com/models` 实时拉取可用模型并缓存 5 分钟，无需维护静态列表。在 Harness `0.1.2-alpha.1` 及以上，从设置页发起的模型发现可以取消，且取消后保持原有缓存目录不变，不会把模型选择器清空。
 
 **视觉支持** — 声明了 `supports.vision: true` 的模型（如 `gpt-4.1`、`gpt-4o`）支持 Harness 产生的所有图片来源：对话框粘贴/拖拽、`/goal` 和 `/plan` 附件、以及工具结果图片（`read_image`、MCP）。图片按模型路由通过 Harness 附件服务（`readImageRequest`）派生，附带稳定句柄，并在两种 wire 协议上发送。当请求超过模型图片数量或本地 Base64 预算时，会优先淘汰较旧的请求图片，同时保护当前用户提交和最新工具结果批次；被省略的图片以稳定占位符标记，不修改持久历史。设置 `imageOverflowPolicy: error` 可改为超限时直接拒绝。
 
