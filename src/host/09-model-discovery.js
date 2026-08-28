@@ -91,5 +91,80 @@ function catalogCacheEntry(models, now) {
     ttl: models.length > 0 ? CATALOG_TTL_MS : NEGATIVE_CATALOG_TTL_MS
   };
 }
+
+/**
+ * Build the model-catalog resolver: the TTL cache, the credential gate, the
+ * discovery attempt, the static fallback, and the cancellation policy in one
+ * place. Transport and credentials arrive as dependencies so the policy can be
+ * exercised without a network or a live Harness context.
+ *
+ * @param {object} deps
+ * @param {() => readonly object[]} deps.configuredModels - static catalog from settings.
+ * @param {() => Promise<string | undefined>} deps.resolveRawOAuthToken - undefined when signed out.
+ * @param {(signal?: AbortSignal) => Promise<object>} deps.resolveConnection
+ * @param {(connection: object, signal?: AbortSignal) => Promise<unknown>} deps.fetchModels - raw `/models` body.
+ * @param {{ warn(message: unknown): void }} deps.logger
+ * @param {string} deps.name - plugin name used in the diagnostic.
+ * @param {() => number} [deps.now] - clock seam for tests.
+ * @returns {((signal?: AbortSignal) => Promise<readonly object[]>) & { invalidate(): void }}
+ */
+function createCatalogResolver({
+  configuredModels,
+  resolveRawOAuthToken,
+  resolveConnection,
+  fetchModels,
+  logger,
+  name,
+  now = Date.now
+}) {
+  let cache;
+  /**
+   * @param {AbortSignal} [signal] - cancellation owned by one caller. Every
+   *   call issues its own requests (there is no in-flight sharing), so an abort
+   *   never reaches another caller's work. It must, however, leave the shared
+   *   cache untouched: the failure path below caches a fallback catalog under a
+   *   short TTL, and storing that for a merely cancelled lookup would empty
+   *   every model picker until the TTL expired.
+   */
+  const resolve = async (signal) => {
+    const cached = cache;
+    if (cached !== void 0 && now() < cached.at + cached.ttl) return cached.models;
+    signal?.throwIfAborted();
+    // Never advertise models that cannot be called. In particular, the old
+    // DEFAULT_MODELS fallback made an unauthenticated provider look usable in
+    // every model picker even though every request would fail MISSING_CREDENTIAL.
+    const raw = await resolveRawOAuthToken();
+    if (raw === void 0) {
+      const models = [];
+      cache = catalogCacheEntry(models, now());
+      return models;
+    }
+    try {
+      const connection = await resolveConnection(signal);
+      const discovered = readModelsListing(await fetchModels(connection, signal));
+      if (discovered !== void 0) {
+        cache = catalogCacheEntry(discovered, now());
+        return discovered;
+      }
+    } catch (error) {
+      // A cancelled lookup is not a discovery failure: surface it and leave the
+      // cache as it was, so the next caller re-interrogates the endpoint.
+      if (signal?.aborted === true) throw error;
+      logger.warn(`${name}: model discovery failed; using configured or default catalog`);
+      logger.warn(error);
+    }
+    // A configured static catalog is only a metadata fallback for an account
+    // that has a credential. Without an explicit catalog, failed token
+    // exchange/discovery advertises no models rather than eight unusable ones.
+    const configured = configuredModels();
+    const fallback = configured.length > 0 ? configured : [];
+    cache = catalogCacheEntry(fallback, now());
+    return fallback;
+  };
+  resolve.invalidate = () => {
+    cache = void 0;
+  };
+  return resolve;
+}
 //#endregion
 

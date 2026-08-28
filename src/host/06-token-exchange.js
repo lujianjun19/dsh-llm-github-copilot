@@ -11,8 +11,13 @@ function deriveBaseUrlFromProxyEp(apiToken) {
 /**
  * Exchange a long-lived GitHub token for a short-lived Copilot API token and
  * the account-specific API base URL, matching VS Code / Copilot CLI behavior.
+ *
+ * @param {string} rawToken - the long-lived GitHub OAuth token.
+ * @param {AbortSignal} [signal] - caller cancellation; an aborted exchange
+ *   surfaces its abort reason unchanged so callers can tell cancellation apart
+ *   from a genuine transport failure.
  */
-async function exchangeCopilotToken(rawToken) {
+async function exchangeCopilotToken(rawToken, signal) {
   let response;
   try {
     response = await copilotFetch(TOKEN_EXCHANGE_URL, {
@@ -23,9 +28,11 @@ async function exchangeCopilotToken(rawToken) {
         "editor-version": EDITOR_VERSION,
         "editor-plugin-version": EDITOR_PLUGIN_VERSION,
         "user-agent": EXCHANGE_USER_AGENT
-      }
+      },
+      ...signal !== void 0 ? { signal } : {}
     });
   } catch (error) {
+    if (signal?.aborted === true) throw error;
     throw new LlmError(`GitHub Copilot token exchange request failed`, "TRANSPORT", { cause: error });
   }
   if (!response.ok) {
