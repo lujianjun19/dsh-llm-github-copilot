@@ -116,6 +116,10 @@ function identifyProtectedIds(messages) {
  * @param {object} params.model  - catalog entry (may have .vision limits)
  * @param {object | null | undefined} params.attachmentStore
  * @param {AbortSignal | undefined} params.signal
+ * @param {((ref: object) => object | undefined) | undefined} [params.resolveImageAccess]
+ *   - resolves one durable image to a read-only execution-world path, so the
+ *     model can re-read the full-fidelity file instead of only seeing the
+ *     downscaled request preview. Undefined leaves every handle pathless.
  * @param {string} params.overflowPolicy  - 'offload-oldest' | 'error'
  * @param {number} params.defaultImagePixelBudget
  * @param {number} params.maxInlineRequestImageBytes
@@ -128,6 +132,7 @@ async function prepareRequestImages({
   model,
   attachmentStore,
   signal,
+  resolveImageAccess,
   overflowPolicy,
   defaultImagePixelBudget,
   maxInlineRequestImageBytes,
@@ -164,7 +169,7 @@ async function prepareRequestImages({
       byteQuantum: inlineImageOffloadByteQuantum,
       countQuantum: 1,
       byteLength,
-      ...LLM.offloadPlaceholder
+      ...LLM.offloadPlaceholderFor(resolveImageAccess)
     });
     const kept = attachmentIdSet(projected);
     for (const id of protectedIds.all) {
@@ -297,7 +302,7 @@ async function prepareRequestImages({
     const version = requestImages.get(ref.attachmentId);
     if (version == null) return null; // was offloaded
     const dataUrl = `data:${version.mediaType};base64,${Buffer.from(version.data).toString("base64")}`;
-    const handle = LLM.requestImageHandle(ref, version);
+    const handle = LLM.requestImageHandle(ref, version, resolveImageAccess?.(ref));
     return { version, dataUrl, handle, mediaType: version.mediaType };
   };
 

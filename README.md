@@ -116,6 +116,8 @@ export GITHUB_COPILOT_OAUTH_TOKEN=<your-github-oauth-token>
 
 **Vision support** — models that declare `supports.vision: true` (e.g. `gpt-4.1`, `gpt-4o`) accept images from every source Harness produces: pasted or dragged images in the composer, `/goal` and `/plan` attachments, and tool-result images (`read_image`, MCP servers). Images are derived per model route through the Harness attachment service (`readImageRequest`), tagged with a stable handle, and sent over both wire protocols. When a request exceeds a model's image count or the local inline byte budget, older request images are offloaded first while the current user submission and the latest tool-result batch are protected; a stable placeholder marks any omitted image without altering the durable history. Set `imageOverflowPolicy: error` to reject over-limit requests instead.
 
+**Recoverable images** — on Harness `0.1.2-alpha.1` and newer, every image the model sees is annotated with a read-only path to its normalized copy in the tool execution world. The model receives a downscaled preview but can re-read the full file when it needs detail, and an image offloaded to fit a request limit stays recoverable instead of being simply gone. The path resolves through the Harness filesystem provider, so workspace and sandbox confinement still apply; when no mapping exists the annotation is omitted and nothing else changes.
+
 **Two wire protocols** — the adapter speaks both OpenAI Chat Completions (`/chat/completions`) and the newer Responses API (`/responses`). The correct endpoint is chosen automatically per model.
 
 **Reasoning control** — effort levels (`low / medium / high / max`) are forwarded to models that declare them (`gpt-5.x`, Claude thinking budget, Gemini reasoning).

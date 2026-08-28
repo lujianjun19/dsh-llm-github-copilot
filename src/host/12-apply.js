@@ -118,6 +118,16 @@ function apply(ctx, config) {
     resolveModel,
     resolveConnection,
     resolveAttachments: () => ctx.get("attachments"),
+    // Bridge the attachment provider's host object location into the mounted
+    // tool execution world. Both halves are provider-owned: the attachment
+    // store knows where the normalized object lives, the filesystem provider
+    // knows how that path appears to tools. Neither sandbox nor workspace
+    // confinement is bypassed — an unmapped path simply resolves to undefined.
+    resolveImageAccess: (attachments, ref) => LLM.imageAccess(
+      attachments,
+      (hostPath) => ctx.get("fs")?.processPathFromHostPath(hostPath),
+      ref
+    ),
     warn: (msg) => ctx.logger.warn(msg)
   });
   ctx.llm.registerConfigurableProviders([{

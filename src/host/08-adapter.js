@@ -105,6 +105,9 @@ var GitHubCopilotAdapter = class extends LlmAdapter {
         model: entry,
         attachmentStore,
         signal,
+        resolveImageAccess: this.config.resolveImageAccess != null
+          ? (ref) => this.config.resolveImageAccess(attachmentStore, ref)
+          : void 0,
         overflowPolicy: adapterOptions.imageOverflowPolicy,
         defaultImagePixelBudget: adapterOptions.defaultImagePixelBudget,
         maxInlineRequestImageBytes: adapterOptions.maxInlineRequestImageBytes,
