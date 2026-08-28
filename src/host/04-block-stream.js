@@ -38,7 +38,7 @@ var BlockStream = class {
       case "reasoning": return { type: "reasoning", text: block.text };
       case "tool-call": return {
         type: "tool-call",
-        id: CallId(block.callId ?? ""),
+        id: LLM.toolCallId(block.callId ?? ""),
         name: block.name ?? "",
         arguments: block.text
       };
@@ -127,7 +127,7 @@ var BlockStream = class {
     return [{
       type: "tool-call-delta",
       index: handle.index,
-      id: CallId(handle.callId ?? ""),
+      id: LLM.toolCallId(handle.callId ?? ""),
       ...handle.name !== void 0 ? { name: handle.name } : {},
       argumentsDelta: delta
     }];

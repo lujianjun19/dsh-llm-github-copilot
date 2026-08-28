@@ -163,7 +163,8 @@ async function prepareRequestImages({
       maxBytes: maxInlineRequestImageBytes,
       byteQuantum: inlineImageOffloadByteQuantum,
       countQuantum: 1,
-      byteLength
+      byteLength,
+      ...LLM.offloadPlaceholder
     });
     const kept = attachmentIdSet(projected);
     for (const id of protectedIds.all) {
@@ -242,6 +243,22 @@ async function prepareRequestImages({
     }
   }
 
+  // Validate derived bytes against the model's published per-image limit.
+  // `ImageRequestPolicy.maxBytes` is a target, not a cap: when no quality on
+  // the encoder ladder meets it the store returns its smallest output anyway,
+  // which can still exceed the Provider limit. Failing here names the limit
+  // instead of surfacing an opaque Provider rejection.
+  if (vision?.maxImageBytes !== undefined) {
+    for (const [, version] of requestImages) {
+      if (version.bytes > vision.maxImageBytes) {
+        throw new LlmError(
+          `GitHub Copilot model "${model.id}" accepts images up to ${vision.maxImageBytes} bytes; the derived request image is ${version.bytes} bytes.`,
+          "UNSUPPORTED_CONTENT"
+        );
+      }
+    }
+  }
+
   const exactBase64Length = (ref) => {
     const version = requestImages.get(ref.attachmentId);
     return version != null ? BASE64_EXPANSION(version.bytes) : 0;
@@ -280,7 +297,7 @@ async function prepareRequestImages({
     const version = requestImages.get(ref.attachmentId);
     if (version == null) return null; // was offloaded
     const dataUrl = `data:${version.mediaType};base64,${Buffer.from(version.data).toString("base64")}`;
-    const handle = requestImageHandleText(version);
+    const handle = LLM.requestImageHandle(ref, version);
     return { version, dataUrl, handle, mediaType: version.mediaType };
   };
 
