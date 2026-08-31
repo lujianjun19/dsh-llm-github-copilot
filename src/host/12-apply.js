@@ -1,4 +1,13 @@
 //#region apply
+/**
+ * Provision the credential the harness's own Copilot route consumes.
+ *
+ * This plugin registers no LLM adapter. It owns the GitHub device flow and
+ * writes its result as a grant record that `llm-pi-ai` reads for its
+ * `github-copilot` provider; that route then performs the Copilot token
+ * exchange, refreshes it, derives the account's endpoint, and serves every
+ * request. See `docs/adr/0002-narrow-to-credential-provider.md`.
+ */
 function apply(ctx, config) {
   let current = () => config;
   let lastRaw;
@@ -7,7 +16,7 @@ function apply(ctx, config) {
     const raw = current();
     if (raw === lastRaw && lastGood !== void 0) return lastGood;
     try {
-      const next = resolveAdapterOptions(raw, launchEnvironmentOf(ctx));
+      const next = resolveAdapterOptions(raw);
       lastRaw = raw;
       lastGood = next;
       return next;
@@ -21,131 +30,93 @@ function apply(ctx, config) {
   };
   options();
 
-  // ── credential resolution ────────────────────────────────────────────────
+  // ── credential plane ─────────────────────────────────────────────────────
+  /**
+   * The grant record, when the credentials service is mounted. A composition
+   * without one genuinely holds no credential, so reads answer "nothing".
+   */
+  const readGrant = async () => {
+    const credentials = ctx.get("credentials");
+    if (credentials === void 0) return void 0;
+    return credentials.readRecord(piAiRecordKey());
+  };
+
+  /**
+   * The long-lived token, from the grant first and the configured reference
+   * second. The reference keeps an ambient `export GITHUB_COPILOT_OAUTH_TOKEN=…`
+   * working, and is what an installation predating the grant still holds.
+   */
   const resolveRawOAuthToken = async () => {
+    const fromGrant = grantToken(await readGrant());
+    if (fromGrant !== void 0) return fromGrant;
     const ref = options().oauthTokenEnv;
     const credentials = ctx.get("credentials");
     if (credentials !== void 0) {
       const hit = await credentials.resolve(ref);
-      if (hit !== void 0 && hit.value.length > 0) return assertUsableApiKey(hit.value, name, ref);
-    } else {
-      const ambient = launchEnvironmentOf(ctx).get(ref);
-      if (ambient !== void 0 && ambient.value.length > 0) return assertUsableApiKey(ambient.value, name, ref);
+      if (hit !== void 0 && hit.value.length > 0) return hit.value;
     }
-    return void 0;
+    const ambient = launchEnvironmentOf(ctx).get(ref);
+    return ambient !== void 0 && ambient.value.length > 0 ? ambient.value : void 0;
   };
+
+  /**
+   * Publish a token to the consuming route, and to this plugin's own reference
+   * so an ambient deployment and a signed-in one look alike.
+   *
+   * The write is read back and the token compared, because the record's format
+   * belongs to another plugin: a shape it stops accepting must fail loudly here
+   * rather than leave a credential that silently authenticates nothing.
+   */
   const storeRawOAuthToken = async (token) => {
-    const ref = options().oauthTokenEnv;
     const credentials = ctx.get("credentials");
-    if (credentials === void 0) throw new LlmError(`GitHub Copilot sign-in needs the credentials service to store ${ref}`, "MISSING_CREDENTIAL");
-    await credentials.set(ref, token);
+    if (credentials === void 0) {
+      throw new Error(`${name}: signing in needs the credentials service; mount dsh-credentials-local`);
+    }
+    await credentials.modifyRecord(piAiRecordKey(), async () => piAiGrantRecord(token));
+    if (grantToken(await credentials.readRecord(piAiRecordKey())) !== token) {
+      throw new Error(
+        `${name}: the credential record at ${PI_AI_RECORD_SCOPE}/${PI_AI_PROVIDER} did not survive the write;`
+        + " the consuming plugin may have changed its grant format",
+      );
+    }
+    await credentials.set(options().oauthTokenEnv, token);
   };
 
-  // ── Copilot token exchange cache ─────────────────────────────────────────
-  let exchangeCache;
-  const resolveConnection = async (signal) => {
-    const raw = await resolveRawOAuthToken();
-    if (raw === void 0) throw new LlmError(`GitHub Copilot: no GitHub OAuth token; run /copilot-login or store ${options().oauthTokenEnv}`, "MISSING_CREDENTIAL");
-    const cached = exchangeCache;
-    if (cached !== void 0 && cached.raw === raw && Date.now() < cached.expiresAtMs - TOKEN_REFRESH_MARGIN_MS) return cached.connection;
-    const exchanged = await exchangeCopilotToken(raw, signal);
-    const connection = {
-      apiToken: exchanged.apiToken,
-      baseUrl: exchanged.baseUrl ?? options().baseURL ?? DEFAULT_BASE_URL
-    };
-    exchangeCache = { raw, expiresAtMs: exchanged.expiresAtMs, connection };
-    return connection;
+  /**
+   * Adopt a token this plugin can already see into the grant the route reads.
+   * Runs once the credential service is available so an ambient token, or an
+   * installation predating the grant, authenticates without a second sign-in.
+   *
+   * This is scoped to `credentials` rather than run at activation: the plugin
+   * declares no service inject, so it activates before the credential plane
+   * exists and an unscoped read would see nothing and silently give up.
+   */
+  const seedGrantFromReference = async () => {
+    try {
+      if (grantToken(await readGrant()) !== void 0) return;
+      const existing = await resolveRawOAuthToken();
+      if (existing === void 0) return;
+      await storeRawOAuthToken(existing);
+      ctx.logger.info(
+        `${name}: adopted the existing ${options().oauthTokenEnv} token into the`
+        + ` ${PI_AI_RECORD_SCOPE}/${PI_AI_PROVIDER} credential`,
+      );
+    } catch (error) {
+      ctx.logger.warn(`${name}: could not adopt an existing token; sign in again to publish one`);
+      ctx.logger.warn(error);
+    }
   };
+  ctx.inject(["credentials"], (credentialCtx) => {
+    credentialCtx.effect(() => {
+      void seedGrantFromReference();
+      return () => {};
+    }, `${name}: adopt an existing token`);
+  });
 
-  // ── model catalog discovery ─────────────────────────────────────────────
-  // Transport lives here; the cache, credential gate, fallback, and
-  // cancellation policy live in createCatalogResolver().
-  const catalog = createCatalogResolver({
-    configuredModels: () => options().models,
-    resolveRawOAuthToken,
-    resolveConnection,
-    fetchModels: async (connection, signal) => {
-      const response = await copilotFetch(`${connection.baseUrl}/models`, {
-        method: "GET",
-        headers: {
-          authorization: `Bearer ${connection.apiToken}`,
-          accept: "application/json",
-          "copilot-integration-id": INTEGRATION_ID,
-          "editor-version": EDITOR_VERSION,
-          ...attributionHeaders()
-        },
-        ...signal !== void 0 ? { signal } : {}
-      });
-      if (!response.ok) throw new LlmError(`GitHub Copilot /models answered ${response.status}`, "DISCOVERY_FAILED");
-      return response.json();
-    },
-    logger: ctx.logger,
-    name
-  });
-  const resolveModel = async (provider, model) => {
-    const models = await catalog();
-    const configured = models.find((entry) => entry.id === model);
-    return {
-      ...configured === void 0 ? { provider, id: model, name: model, inputModalities: ["text"] } : modelInfo(provider, configured),
-      context: { contextWindow: configured?.contextWindow ?? options().defaultContextWindow },
-      defaultMaxTokens: configured?.maxTokens ?? options().defaultMaxTokens
-    };
-  };
-
-  // ── adapter + registrations ──────────────────────────────────────────────
-  const adapter = new GitHubCopilotAdapter({
-    options,
-    catalog,
-    resolveModel,
-    resolveConnection,
-    resolveAttachments: () => ctx.get("attachments"),
-    // Bridge the attachment provider's host object location into the mounted
-    // tool execution world. Both halves are provider-owned: the attachment
-    // store knows where the normalized object lives, the filesystem provider
-    // knows how that path appears to tools. Neither sandbox nor workspace
-    // confinement is bypassed — an unmapped path simply resolves to undefined.
-    resolveImageAccess: (attachments, ref) => LLM.imageAccess(
-      attachments,
-      (hostPath) => ctx.get("fs")?.processPathFromHostPath(hostPath),
-      ref
-    ),
-    warn: (msg) => ctx.logger.warn(msg)
-  });
-  ctx.llm.registerConfigurableProviders([{
-    provider: PROVIDER,
-    displayName: DISPLAY_NAME,
-    settingsNs: NS,
-    settingsPath: []
-  }]);
-  const registration = ctx.llm.registerAdapter([PROVIDER], adapter);
-  // Credential writes are a separate configuration plane. Whenever this
-  // plugin's OAuth reference changes (our device flow, Settings, or an
-  // external credentials-file edit), invalidate both token/catalog caches and
-  // re-commit the adapter route. That emits llm/adapters-updated; every open
-  // browser model directory then refetches session.models automatically.
-  // NOTE: Harness 0.1.1-rc.2+ emits credentials/reference-updated; the old
-  // credentials/updated event no longer fires.
-  ctx.on(CREDENTIALS_EVENT, (ref) => {
-    if (ref !== options().oauthTokenEnv) return;
-    exchangeCache = void 0;
-    catalog.invalidate();
-    registration.replace([PROVIDER]);
-  });
-  let registeredPolicy = options().retryPolicy;
-  const ensureRegistrationFacts = () => {
-    const policy = options().retryPolicy;
-    if (deepEqualJson(policy, registeredPolicy)) return;
-    registration.replace([PROVIDER]);
-    registeredPolicy = policy;
-  };
-  // Harness 0.1.2-alpha.1 hands the discovery callback a cancellation signal as
-  // its second argument (0.1.1-rc.2 passes none, so it is simply undefined).
-  ctx.llm.registerModelDiscovery(NS, async (_request, signal) => catalog(signal));
   installSettingsSection(ctx, NS, Config, config, {
     setSource: (source) => {
       current = source;
-    },
-    onChange: ensureRegistrationFacts
+    }
   });
 
   // ── shared OAuth controller (commands + Web settings page) ────────────────
@@ -195,17 +166,11 @@ function apply(ctx, config) {
       if (generation !== authGeneration) return;
       if (result.state === "done") {
         try {
-          // credentials.set triggers credentials/reference-updated after its
-          // durable commit; the listener above invalidates caches and refreshes
-          // every open model directory before this flow settles authenticated.
           await storeRawOAuthToken(result.token);
-          // Belt-and-suspenders: clear the caches here too, so a re-login
-          // recovers the catalog even if the credentials/reference-updated
-          // fan-out is missed or races the next model-directory poll.
-          exchangeCache = void 0;
-          catalog.invalidate();
           finish("authenticated");
-          ctx.logger.info(`${name}: GitHub Copilot sign-in completed; token stored as ${options().oauthTokenEnv}`);
+          ctx.logger.info(
+            `${name}: GitHub Copilot sign-in completed; the ${PI_AI_PROVIDER} route can now authenticate`,
+          );
         } catch (error) {
           finish("error", error instanceof Error ? error.message : String(error));
           ctx.logger.error(`${name}: failed to store the Copilot credential`);
@@ -227,19 +192,23 @@ function apply(ctx, config) {
     activeTimers.add(timer);
   };
   const authStatus = async () => {
-    const raw = await resolveRawOAuthToken();
+    const record = await readGrant();
+    const raw = grantToken(record) ?? await resolveRawOAuthToken();
     if (raw === void 0) return {
       authenticated: false,
       credential: options().oauthTokenEnv,
+      provider: PI_AI_PROVIDER,
       ...publicFlow(authFlow) ?? { state: "signed-out" }
     };
-    const models = await catalog();
+    // Model ids are read back from the record the consuming route maintains,
+    // never interrogated here: this plugin owns no catalog.
+    const modelIds = grantModelIds(record);
     return {
       authenticated: true,
       state: "authenticated",
       credential: options().oauthTokenEnv,
-      modelCount: models.length,
-      models: models.map((model) => ({ id: model.id, name: model.name ?? model.id }))
+      provider: PI_AI_PROVIDER,
+      ...modelIds === void 0 ? {} : { modelCount: modelIds.length }
     };
   };
   const beginLogin = async () => {
@@ -247,7 +216,8 @@ function apply(ctx, config) {
     if (existing !== void 0) return {
       authenticated: true,
       state: "authenticated",
-      credential: options().oauthTokenEnv
+      credential: options().oauthTokenEnv,
+      provider: PI_AI_PROVIDER
     };
     if (authFlow?.state === "pending" && typeof authFlow.expiresAt === "number" && Date.now() < authFlow.expiresAt) {
       return { authenticated: false, ...publicFlow(authFlow) };
@@ -259,18 +229,15 @@ function apply(ctx, config) {
   const logout = async () => {
     const ref = options().oauthTokenEnv;
     const credentials = ctx.get("credentials");
-    if (credentials === void 0) throw new LlmError("GitHub Copilot sign-out needs the credentials service", "MISSING_CREDENTIAL");
-    const existing = await resolveRawOAuthToken();
+    if (credentials === void 0) throw new Error(`${name}: signing out needs the credentials service`);
     authGeneration += 1;
     clearAuthTimers();
     authFlow = { state: "signed-out" };
-    exchangeCache = void 0;
-    catalog.invalidate();
-    // credentials.unset triggers credentials/reference-updated after its durable commit;
-    // the shared listener refreshes model directories back to the fallback
-    // catalog. An already-absent credential needs no additional announcement.
-    if (existing !== void 0) await credentials.unset(ref);
-    return { authenticated: false, state: "signed-out", credential: ref };
+    // Both stores are cleared: the grant the route authenticates from, and this
+    // plugin's own reference, which would otherwise be re-adopted on restart.
+    await credentials.deleteRecord(piAiRecordKey());
+    if ((await credentials.resolve(ref)) !== void 0) await credentials.unset(ref);
+    return { authenticated: false, state: "signed-out", credential: ref, provider: PI_AI_PROVIDER };
   };
 
   // ── Web settings API (optional; only mounted by the web profile) ──────────
@@ -322,13 +289,13 @@ function apply(ctx, config) {
   ctx.inject(["commands"], (cctx) => {
     cctx.commands.register({
       name: "copilot-login",
-      description: "Sign in to GitHub Copilot via the device flow and register its models",
+      description: "Sign in to GitHub Copilot via the device flow",
       handler: async () => {
         try {
           const status = await beginLogin();
           if (status.authenticated) return {
             kind: "success",
-            text: `GitHub Copilot is already authenticated (credential ${options().oauthTokenEnv}). Run /copilot-status for details.`
+            text: `GitHub Copilot is already authenticated. Run /copilot-status for details.`
           };
           return {
             kind: "success",
@@ -338,7 +305,8 @@ function apply(ctx, config) {
               `2. Enter this code: ${status.userCode}`,
               "3. Authorize the GitHub App (VS Code) and complete sign-in.",
               "",
-              "Polling continues in the background; your token is stored automatically once you authorize. Check /copilot-status afterwards."
+              "Polling continues in the background; your credential is stored automatically once you authorize.",
+              `Then select a model under the "${PI_AI_PROVIDER}" provider in Settings → Models.`
             ].join("\n")
           };
         } catch (error) {
@@ -348,7 +316,7 @@ function apply(ctx, config) {
     });
     cctx.commands.register({
       name: "copilot-status",
-      description: "Show GitHub Copilot authentication and model status",
+      description: "Show GitHub Copilot authentication status",
       handler: async () => {
         try {
           const status = await authStatus();
@@ -359,9 +327,12 @@ function apply(ctx, config) {
           return {
             kind: "success",
             text: [
-              `GitHub Copilot: authenticated (credential ${status.credential}).`,
-              `Models available: ${status.modelCount}`,
-              ...status.models.slice(0, 30).map((model) => `- ${model.id}`)
+              `GitHub Copilot: authenticated.`,
+              `Credential published to the "${status.provider}" provider.`,
+              status.modelCount === void 0
+                ? "Model list is populated by that provider on its first request."
+                : `Models available to this account: ${status.modelCount}`,
+              `Select a model under that provider in Settings → Models.`
             ].join("\n")
           };
         } catch (error) {
@@ -379,8 +350,8 @@ function apply(ctx, config) {
           return {
             kind: "success",
             text: existing === void 0
-              ? `GitHub Copilot is not signed in (no token found for ${status.credential}). Nothing to do.`
-              : `GitHub Copilot signed out. Credential ${status.credential} has been removed. Run /copilot-login to sign in again.`
+              ? "GitHub Copilot is not signed in. Nothing to do."
+              : `GitHub Copilot signed out; the "${status.provider}" credential has been removed.`
           };
         } catch (error) {
           return { kind: "error", text: error instanceof Error ? error.message : String(error) };
@@ -390,3 +361,4 @@ function apply(ctx, config) {
   });
 }
 //#endregion
+

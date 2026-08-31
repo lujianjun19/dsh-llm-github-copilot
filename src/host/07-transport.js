@@ -1,13 +1,13 @@
 //#region transport
 /**
- * Copilot request transport. GitHub serves the full Copilot model catalog
- * (Claude included) only to connections that arrive through the environment's
- * proxy egress. The undici `ProxyAgent` routes each request through
+ * GitHub request transport for the device flow, honoring the ambient proxy.
+ *
+ * The undici `ProxyAgent` routes each request through
  * `https_proxy`/`HTTPS_PROXY`/`http_proxy`/`HTTP_PROXY` (+ `NO_PROXY`) at
- * runtime — no launch flag needed — and falls back to the global fetch when
- * no proxy applies. A hand-rolled CONNECT tunnel is deliberately NOT used:
- * on mixed-mode proxies it bypasses the proxy egress and GitHub then serves
- * a reduced catalog.
+ * runtime — no launch flag needed — and falls back to the global fetch when no
+ * proxy applies. A hand-rolled CONNECT tunnel is deliberately NOT used: on
+ * mixed-mode proxies it bypasses the proxy egress, which GitHub treats as a
+ * different client.
  */
 import undici from "undici";
 const ProxyAgent = undici.ProxyAgent;

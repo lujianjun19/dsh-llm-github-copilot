@@ -1,3 +1,3 @@
 
 
-export { BlockStream, Config, DEFAULT_MODELS, DEFAULT_OAUTH_TOKEN_ENV, CATALOG_TTL_MS, NEGATIVE_CATALOG_TTL_MS, CREDENTIALS_EVENT, catalogCacheEntry, createCatalogResolver, GitHubCopilotAdapter, apply, inject, llmCompat, name, readModelsListing, createImageResolver, prepareRequestImages, serializeRequest, serializeResponsesRequest, translate, translateResponses };
+export { Config, DEFAULT_OAUTH_TOKEN_ENV, PI_AI_PROVIDER, PI_AI_RECORD_SCOPE, apply, grantModelIds, grantToken, inject, name, piAiGrantRecord, piAiRecordKey, resolveAdapterOptions };

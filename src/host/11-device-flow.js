@@ -1,4 +1,23 @@
 //#region device flow
+/**
+ * A device-flow failure. Carries a code so callers can distinguish transport
+ * from server refusal, replacing the `LlmError` this plugin used while it was
+ * an LLM adapter — nothing here is an LLM concern any more.
+ */
+class CopilotAuthError extends Error {
+  /**
+   * @param {string} message - human-readable failure.
+   * @param {string} code - stable machine-readable tag.
+   * @param {{ cause?: unknown, status?: number }} [details]
+   */
+  constructor(message, code, details = {}) {
+    super(message, details.cause === void 0 ? void 0 : { cause: details.cause });
+    this.name = "CopilotAuthError";
+    this.code = code;
+    if (details.status !== void 0) this.status = details.status;
+  }
+}
+
 async function startDeviceFlow() {
   let response;
   try {
@@ -12,13 +31,13 @@ async function startDeviceFlow() {
       body: new URLSearchParams({ client_id: OAUTH_CLIENT_ID, scope: OAUTH_SCOPE }).toString()
     });
   } catch (error) {
-    throw new LlmError("failed to start GitHub device authorization", "TRANSPORT", { cause: error });
+    throw new CopilotAuthError("failed to start GitHub device authorization", "TRANSPORT", { cause: error });
   }
-  if (!response.ok) throw new LlmError(`GitHub device authorization failed (HTTP ${response.status})`, response.status >= 500 ? "SERVER" : "TRANSPORT", { status: response.status });
+  if (!response.ok) throw new CopilotAuthError(`GitHub device authorization failed (HTTP ${response.status})`, response.status >= 500 ? "SERVER" : "TRANSPORT", { status: response.status });
   const data = await response.json();
   const deviceCode = data.device_code;
   const userCode = data.user_code;
-  if (typeof deviceCode !== "string" || deviceCode.length === 0 || typeof userCode !== "string" || userCode.length === 0) throw new LlmError("GitHub did not return a device code", "TRANSPORT");
+  if (typeof deviceCode !== "string" || deviceCode.length === 0 || typeof userCode !== "string" || userCode.length === 0) throw new CopilotAuthError("GitHub did not return a device code", "TRANSPORT");
   return {
     deviceCode,
     userCode,

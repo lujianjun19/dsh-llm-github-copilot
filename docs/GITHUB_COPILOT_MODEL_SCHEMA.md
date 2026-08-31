@@ -1,7 +1,12 @@
 # GitHub Copilot `/models` API — 模型对象 Schema
 
 本文档记录 `GET {baseUrl}/models` 返回的 `data[]` 数组中每个模型对象的完整字段结构，
-供后续功能开发参考。数据来自 2026-08-19 对 `api.business.githubcopilot.com` 的实测抓包（共 42 个模型对象）。
+供参考。
+
+> **已失效（历史记录）**：本插件不再调用 `/models`。
+> `docs/adr/0002-narrow-to-credential-provider.md` 把模型发现交给了 Harness 的
+> Copilot 路由。本文保留为当时的实测抓包记录，不再对应仓库中的任何代码。
+数据来自 2026-08-19 对 `api.business.githubcopilot.com` 的实测抓包（共 42 个模型对象）。
 
 ---
 
