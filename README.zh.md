@@ -2,22 +2,17 @@
 
 [English](README.md) | 中文
 
-GitHub Copilot LLM 适配器，适用于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)。
+为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 提供 GitHub Copilot 登录。
 
-使用 GitHub 账号登录后，可直接在 DeepSeek Harness 中调用所有 Copilot 模型，包括 GPT-4.1、Claude Sonnet、Gemini 和 GPT-5 系列。支持视觉能力的模型可以接受对话框中粘贴/拖拽的图片、`/goal` 和 `/plan` 携带的图片，以及 `read_image`、MCP 等工具返回的图片。
+使用 GitHub 账号登录后，即可在 DeepSeek Harness 中使用你的订阅所包含的全部 Copilot 模型——GPT-5 系列、Claude、Gemini 等。
+
+Harness 本身已经内置了一个 `github-copilot` 提供方，可以服务这些模型；它唯一做不到的是让你登录。本插件正是填补这个缺口：运行 GitHub 设备流，并发布该提供方用于认证的凭据。请求、模型发现、图片与流式处理全部由 Harness 的路由负责，不在本插件内。参见 [`docs/adr/0002-narrow-to-credential-provider.md`](docs/adr/0002-narrow-to-credential-provider.md)。
 
 ## 依赖要求
 
-- **DeepSeek Harness `0.1.1-rc.2` 或 `0.1.2-alpha.1`。** 两个版本均受支持：适配器
-  会探测实际加载的 `@deepseek-ai/dsh-llm` 并选择对应的调用约定。注意
-  `0.1.2-alpha.1` 将 `CallId` 更名为 `ToolCallId`、修改了
-  `requestImageHandleText` 的签名，并要求调用方自行提供请求图片的 offload
-  占位符——因此**插件 `0.4.2` 及更早版本无法在 `0.1.2-alpha.1` 上加载**，请与
-  harness 一同升级本插件。
-- 视觉链路依赖 `0.1.1-rc.2` 新增的原生图片 API（`AttachmentStore.readImageRequest`、
-  `offloadRequestImagesWithPolicy`、`requestImageHandleText`）；`0.1.0-rc.x`
-  及更早版本缺少这些 API，无法运行本适配器。升级命令：
-  `npm install -g @deepseek-ai/dsh@latest`。
+- **DeepSeek Harness `0.1.2-alpha.1` 或更高版本**，且启用其自带的
+  `@deepseek-ai/dsh-llm-pi-ai` 路由（默认已挂载）。本插件写入的正是该路由读取的凭据。
+- 一个拥有 Copilot 订阅的 GitHub 账号。
 - Node.js ≥ 24。
 
 ## 安装
@@ -111,53 +106,35 @@ export GITHUB_COPILOT_OAUTH_TOKEN=<your-github-oauth-token>
 
 ## 功能
 
-**动态模型发现** — 每次登录后从 `https://api.githubcopilot.com/models` 实时拉取可用模型并缓存 5 分钟，无需维护静态列表。在 Harness `0.1.2-alpha.1` 及以上，从设置页发起的模型发现可以取消，且取消后保持原有缓存目录不变，不会把模型选择器清空。
+**设备流登录** — 无需自行创建或粘贴 token。执行 `/copilot-login` 或使用设置页，在浏览器完成授权后凭据会自动保存。
 
-**视觉支持** — 声明了 `supports.vision: true` 的模型（如 `gpt-4.1`、`gpt-4o`）支持 Harness 产生的所有图片来源：对话框粘贴/拖拽、`/goal` 和 `/plan` 附件、以及工具结果图片（`read_image`、MCP）。图片按模型路由通过 Harness 附件服务（`readImageRequest`）派生，附带稳定句柄，并在两种 wire 协议上发送。当请求超过模型图片数量或本地 Base64 预算时，会优先淘汰较旧的请求图片，同时保护当前用户提交和最新工具结果批次；被省略的图片以稳定占位符标记，不修改持久历史。设置 `imageOverflowPolicy: error` 可改为超限时直接拒绝。
+**自动刷新（由下游完成）** — 凭据中保存的是长期 GitHub token。Harness 路由会自行交换出短期 Copilot token、自动续期，并推导出你账户对应的 API 端点（个人 / 企业 / Enterprise）。
 
-**图片可回取** — 在 Harness `0.1.2-alpha.1` 及以上，模型看到的每张图片都会附带其规范化副本在工具执行环境中的**只读路径**。模型收到的是缩小后的预览，但需要细节时可以自行重新读取完整文件；因超限而被淘汰的图片也从“彻底丢失”变为“可按需取回”。路径经由 Harness 文件系统服务解析，工作区与沙箱限制仍然生效；无法映射时仅省略这段标注，其余行为不变。
+**沿用已有 token** — 如果环境中已导出 `GITHUB_COPILOT_OAUTH_TOKEN`，或旧版本插件已保存过该凭据，启动时会自动沿用，无需二次登录。
 
-**双协议** — 适配器同时支持 OpenAI Chat Completions（`/chat/completions`）和新版 Responses API（`/responses`），根据模型自动选择对应端点。
+**设置页面** — Harness Web 设置界面中的 **GitHub Copilot** 专属页面（齿轮图标 → **GitHub Copilot**），可登录、查看状态、退出登录。模型在 **设置 → 模型** 中的 `github-copilot` 提供方下选择。
 
-**推理控制** — 支持声明了推理等级的模型（`gpt-5.x`、Claude 思考预算、Gemini 推理），可传递 `low / medium / high / max` 等级。
+**斜杠命令** — `/copilot-login`、`/copilot-status`、`/copilot-logout`，供没有设置界面的场景使用。
 
-**自动刷新 token** — 短期有效的 Copilot API token 在过期前自动续期，无需手动操作。
+## 选择模型
 
-**本轮 token 用量** — 每次响应都上报 provider 的精确 token 计数（含其自身的总计），因此 Harness 的**本轮用量**面板（`0.1.2-alpha.1` 及以上）能完整展示每一轮的未缓存输入、缓存读取、输出、推理以及缓存命中率。
+登录只发布凭据，不会替你选模型。登录后请打开 **设置 → 模型**，添加 **`github-copilot`** 提供方，并在其中选择模型。
 
-**设置页面** — 插件在 Harness Web 设置界面新增 **GitHub Copilot** 专属页面（在浏览器中打开 DSH → 点击齿轮图标 → **GitHub Copilot**）。在该页面可以登录、查看认证状态和可用模型列表、退出登录，无需在对话框输入命令。
+## 从 0.4.x 升级
+
+0.4.5 及更早版本会注册自己的 `github-copilot-official` 提供方，该提供方已不再存在。如果你的设置或历史会话引用了它，请改为 `github-copilot` 提供方——模型 id 完全相同。已保存的凭据会被自动沿用，无需重新登录。
 
 ## 配置
 
-插件无需任何配置即可使用。如需覆盖默认值，请编辑 profile 的 `cordis.patch.yml`：
+本插件开箱即用。唯一的设置项是保存 GitHub OAuth token 的凭据引用：
 
 ```yaml
 - id: llm-github-copilot
   config:
-    oauthTokenEnv: GITHUB_COPILOT_OAUTH_TOKEN   # 存储 GitHub OAuth token 的环境变量名
-    baseURL: https://api.githubcopilot.com       # 覆盖 Copilot API 地址
-    defaultContextWindow: 262144
-    defaultMaxTokens: 32768
-    streamIdleTimeoutMs: 300000
-    imageOverflowPolicy: offload-oldest         # offload-oldest | error
-    defaultImagePixelBudget: 4194304            # 请求图片像素预算（2048×2048）
-    maxInlineRequestImageBytes: 20971520        # 所有请求图片的 Base64 总预算（20 MiB）
-    inlineImageOffloadByteQuantum: 10485760     # 旧图淘汰步长（10 MiB）
-    models: []   # 可选的静态 fallback 模型列表，留空则使用动态发现
+    oauthTokenEnv: GITHUB_COPILOT_OAUTH_TOKEN   # 凭据引用 / 环境变量名
 ```
 
-静态 fallback 模型可以显式声明视觉能力（仅在动态 `/models` 发现失败时使用）；能力绝不根据模型名称推断：
-
-```yaml
-    models:
-      - id: custom-vision-model
-        inputModalities: [text, image]
-        vision:
-          maxImageBytes: 3145728
-          maxImages: 1
-          mediaTypes: [image/jpeg, image/png, image/webp]
-          imagePixelBudget: 4194304
-```
+与模型、端点、请求行为相关的配置全部位于 Harness 路由的 `llm-pi-ai` 设置段，不在这里。
 
 ## 开发
 
@@ -201,7 +178,7 @@ dsh web
 设备码轮询偶发网络抖动；重新运行一次 `/copilot-login` 拿新口令即可（旧口令随之失效）。
 
 **启动时报 `configurable provider "github-copilot" is already declared`**
-旧版使用了路由名 `github-copilot`（与 DSH 内置冲突）。本版已改为 `github-copilot-official`；确认 `cordis.patch.yml` 里的 `id`/`name` 与本文档一致。
+本插件不再注册自己的提供方——它只为 Harness 内置的 `github-copilot` 提供方发布凭据。如果看不到模型，请确认已登录（`/copilot-status`），并已在 **设置 → 模型** 中添加 `github-copilot` 提供方。同时确认 `cordis.patch.yml` 里的 `id`/`name` 与本文档一致。
 
 **token 过期了怎么办**
 不用管。底层保存的是长期有效的 GitHub OAuth token；短时效 Copilot token 由插件自动缓存并在过期前刷新。只有主动登出或吊销后才需要重新 `/copilot-login`。

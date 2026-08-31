@@ -17,7 +17,7 @@ const backup = join(backupRoot, `v${manifest.version}-${stamp}`)
 const releaseEntries = ['cordis.patch.yml', 'package.json', 'LICENSE', 'README.md', 'README.zh.md', 'AGENTS.md', 'CHANGELOG.md', 'docs', 'lib']
 // Runtime dependencies bundled from local node_modules (avoids network on deploy).
 // Keep in sync with `dependencies` in package.json (exclude peerDependencies and devDependencies).
-const bundledDeps = ['undici', 'eventsource-parser', '@deepseek-ai/schemastery']
+const bundledDeps = ['undici', '@deepseek-ai/schemastery']
 
 const run = (command, args) => execFileSync(command, args, { cwd: root, stdio: 'inherit' })
 const exists = async path => stat(path).then(() => true, error => {

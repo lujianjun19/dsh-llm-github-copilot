@@ -22,43 +22,46 @@ phase with exact commands.
 
 ## Feature design authority
 
-Before implementing vision or document capabilities, read:
+This plugin runs the GitHub device flow and writes one credential record. It
+registers no LLM adapter, serializes no requests, and owns no model catalog.
+Before adding anything outside that boundary, read:
 
 ```text
-docs/VISION_AND_DOCUMENT_HANDOFF.zh-CN.md
+docs/adr/0002-narrow-to-credential-provider.md
 ```
 
-Do not expand that scope (especially generic composer file upload or DSH core changes) without explicit user approval.
+`docs/VISION_AND_DOCUMENT_HANDOFF.zh-CN.md` is retained as the record of the
+vision work that ADR removed. It describes code this plugin no longer contains;
+do not implement against it.
 
-**Read `docs/adr/0002-narrow-to-credential-provider.md` first.** It accepts
-removing the vision pipeline along with the rest of the adapter, so new work
-against the vision spec is very likely wasted. The spec still describes what
-the plugin does *today*; it no longer describes where it is going.
+Do not re-absorb responsibilities the consuming route already owns (model
+discovery, wire serialization, images, streaming) without explicit user
+approval — that is the whole of what ADR-0002 decided.
 
 ## DeepSeek Harness version dependency
 
-- This plugin supports **`@deepseek-ai/dsh` `0.1.1-rc.2` and `0.1.2-alpha.1`**
-  (`^0.1.1-rc.2 || 0.1.2-alpha.1` for the matching `@deepseek-ai/dsh-*`
-  packages), with `@deepseek-ai/cordis` `^4.0.1`. See `peerDependencies` in
-  `package.json`.
-- `0.1.2-alpha.1` made three breaking `@deepseek-ai/dsh-llm` changes: `CallId`
-  → `ToolCallId`, `requestImageHandleText(version)` → `(ref, version, access?)`,
-  and a now-required `policy.placeholder(ref)` on
-  `offloadRequestImagesWithPolicy`. **Every API whose shape differs between
-  supported versions must go through `llmCompat()` in
-  `src/host/01-llm-compat.js`.** Never bind a version-specific symbol with a
-  static named import: a missing export fails ESM linking and takes down the
-  entire plugin tree at boot, before any code runs.
-- It also split the client packages: `@deepseek-ai/dsh-client-runtime` is gone
-  in `0.1.2-alpha.1`, where `slots` comes from `@deepseek-ai/dsh-client-ui-renderer`
-  and `sessions` from `@deepseek-ai/dsh-api-session-controller`. `dsh.client.inject`
-  lists all three; both loaders skip inject entries absent from the graph.
-- The vision path depends on APIs introduced in `0.1.1-rc.2`:
-  `AttachmentStore.readImageRequest()`, and `offloadRequestImagesWithPolicy` /
-  `requestImageHandleText` from `@deepseek-ai/dsh-llm`. Earlier releases
-  (`0.1.0-rc.x`) lack these and will not run the current adapter.
-- Do not lower the baseline below `0.1.1-rc.2`, and do not drop `0.1.2-alpha.1`,
-  without an explicit, user-approved compatibility change.
+- This plugin requires **`@deepseek-ai/dsh` `0.1.2-alpha.1` or newer**, with
+  `@deepseek-ai/cordis` `^4.0.1`. See `peerDependencies` in `package.json`.
+  The floor is the consuming route, not an API this plugin calls: earlier
+  releases ship no Copilot provider for the credential to serve.
+- **`@deepseek-ai/dsh-llm` is deliberately not a dependency.** Every breaking
+  change that forced v0.4.3, v0.4.4, and v0.4.5 came through it. If a change
+  here reaches for it, that is a signal the plugin is growing back into an
+  adapter — re-read ADR-0002 first.
+- The credential record's payload format belongs to the consuming route
+  (`llm-pi-ai`), not to this plugin, and carries no version guarantee. Writes
+  are read back and compared in `storeRawOAuthToken()` so an upstream format
+  change fails loudly instead of leaving a credential that authenticates
+  nothing. Keep that check.
+- Client packages differ across harness versions: `@deepseek-ai/dsh-client-runtime`
+  is gone in `0.1.2-alpha.1`, where `slots` comes from
+  `@deepseek-ai/dsh-client-ui-renderer` and `sessions` from
+  `@deepseek-ai/dsh-api-session-controller`. `dsh.client.inject` lists all
+  three; the loader skips inject entries absent from the graph.
+- Services are resolved dynamically (`ctx.get`, `ctx.inject`), never through a
+  static service inject. Activation happens before the credential plane mounts,
+  so any credential read or write must be scoped to `ctx.inject(['credentials'])`
+  — an unscoped read sees nothing and silently gives up.
 
 ## Required workflow
 
@@ -345,7 +348,7 @@ Expected output for every check: version matches the released tag, `id` is
 
 ## DeepSeek Harness compatibility
 
-- Target APIs common to `@deepseek-ai/dsh` `0.1.1-rc.2` and `0.1.2-alpha.1`; route anything whose shape differs between them through `llmCompat()` (see “DeepSeek Harness version dependency” above).
+- Target APIs the consuming route and the credential plane expose; do not add `@deepseek-ai/dsh-llm` back (see “DeepSeek Harness version dependency” above).
 - Prefer existing Harness services, slots, UI primitives, locale, credentials, settings, attachments, and model invalidation events.
 - Do not patch DeepSeek Harness core from this repository.
 - Browser UI must use Harness primitives/tokens and support English/Chinese with English fallback.

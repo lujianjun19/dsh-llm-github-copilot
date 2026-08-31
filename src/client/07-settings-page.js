@@ -63,7 +63,6 @@
       };
       const pending = status?.state === "pending";
       const authenticated = status?.authenticated === true;
-      const models = Array.isArray(status?.models) ? status.models : [];
       return jsxs("section", {
         style: css.section,
         children: [
@@ -113,13 +112,10 @@
                 ? jsxs(React.Fragment, {
                     children: [
                       jsx("p", { style: css.body, children: text("credential", { credential: status.credential ?? "GITHUB_COPILOT_OAUTH_TOKEN" }) }),
-                      jsx("p", { style: { ...css.body, fontWeight: 500 }, children: text("models", { count: status.modelCount ?? models.length }) }),
-                      models.length === 0
-                        ? jsx("p", { style: css.hint, children: text("noModels") })
-                        : jsx("ul", {
-                            style: css.models,
-                            children: models.map((model) => jsx("li", { style: css.model, children: model.name === model.id ? model.id : `${model.name} (${model.id})` }, model.id))
-                          })
+                      typeof status.modelCount === "number"
+                        ? jsx("p", { style: { ...css.body, fontWeight: 500 }, children: text("models", { count: status.modelCount }) })
+                        : null,
+                      jsx("p", { style: css.hint, children: text("whereToSelect", { provider: status.provider ?? "github-copilot" }) })
                     ]
                   })
                 : null

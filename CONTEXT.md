@@ -1,41 +1,42 @@
-# DSH GitHub Copilot LLM adapter
+# DSH GitHub Copilot credential provider
 
-A DeepSeek Harness LLM adapter that serves GitHub Copilot models. It speaks two
-GitHub wire formats — chat-completions and the OpenAI Responses API — and
-translates each into the harness stream vocabulary.
+Runs the GitHub device flow and publishes its result as the credential the
+DeepSeek Harness Copilot route authenticates from. It is not an LLM adapter:
+model discovery, request serialization, and streaming belong to that route. See
+`docs/adr/0002-narrow-to-credential-provider.md`.
 
 ## Language
 
-**Block**:
-One unit of assistant output within a single model response — text, reasoning,
-or a tool-call — with a `start → delta → end` lifecycle. Mirrors the harness
-`StreamChunk` block vocabulary (`block-start` / `block-end`, `ToolCallBlock`).
-_Avoid_: chunk (a chunk is a single stream event, not the whole unit), segment.
+**Device flow**:
+The GitHub OAuth device-authorization exchange this plugin drives: request a
+user code, show it, poll until the user authorizes, and receive a Long-lived
+token. The only network conversation this plugin owns.
+_Avoid_: login (the user-facing act, which spans the device flow and the
+Handoff), OAuth (names the family, not this exchange).
 
-**Block stream**:
-The ordered, index-assigned sequence of Blocks the adapter produces from either
-wire format. Owns index allocation, block ordering, lifecycle emission, and the
-terminal usage/finish rule.
-_Avoid_: accumulator, buffer.
+**Long-lived token**:
+The durable GitHub OAuth token the Device flow yields (`ghu_…`). It is not a
+Copilot API token and cannot address the Copilot API directly; it is the
+material from which short-lived Copilot tokens are exchanged.
+_Avoid_: API key, access token (both name the short-lived token the Consuming
+route derives).
 
-**Wire format**:
-One of the two GitHub transports the adapter serializes to and translates from:
-chat-completions (`/chat/completions`) or the Responses API (`/responses`).
-Routing between them is per-model, driven by the catalog's advertised endpoints.
-_Avoid_: protocol (overloaded), API.
+**Grant record**:
+The credential record carrying the Long-lived token, written where the
+Consuming route reads it. Its payload format belongs to that route, not to this
+plugin, so it is written verbatim and read back only for the fields this plugin
+needs.
+_Avoid_: credential (the plugin also uses a plain reference; the record is the
+one the handoff depends on), secret.
 
-**Durable image**:
-An admitted image retained in conversation history by immutable attachment reference, regardless of whether it originated from user input, a command, or a tool result.
-_Avoid_: uploaded image (not every image originates from an upload), raw image.
+**Handoff**:
+Writing the Grant record and stopping. Everything downstream — token exchange,
+refresh, endpoint derivation, model filtering, requests — is the Consuming
+route's, and this plugin neither performs nor mirrors it.
+_Avoid_: integration, bridge.
 
-**Request image**:
-The model-route-specific, transient representation of a Durable image sent to a provider. Transforming or omitting it to meet request limits never changes durable conversation history.
-_Avoid_: attachment (the durable reference and its request representation are different concepts), thumbnail.
-
-**Image overflow policy**:
-The route-level rule applied when Request images exceed provider or local resource limits. `error` rejects the request; `offload-oldest` replaces eligible older Request images while preserving their Durable images.
-_Avoid_: truncation (text and images have different selection and replacement rules).
-
-**Protected request image**:
-A Request image originating in the most recent human-authored message or the newest tool-result image batch. It is never eligible for `offload-oldest`; current human images take precedence, and a request that cannot retain them with the newest tool images fails instead.
-_Avoid_: current image (message recency alone does not capture user intent or tool-batch replacement).
+**Consuming route**:
+The harness-provided Copilot provider that reads the Grant record and serves
+model requests (`llm-pi-ai`'s `github-copilot`). Named by role because the
+handoff depends on the record it reads, not on which plugin ships it.
+_Avoid_: pi-ai (the library beneath it), adapter (this plugin used to be one).

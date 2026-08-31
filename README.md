@@ -2,23 +2,18 @@
 
 English | [中文](README.zh.md)
 
-GitHub Copilot LLM adapter for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
+GitHub Copilot sign-in for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
-Sign in with your GitHub account and use every Copilot model — including GPT-4.1, Claude Sonnet, Gemini, and GPT-5 family — directly inside DeepSeek Harness. Vision-capable models accept pasted or dragged images in the chat composer, images from `/goal` and `/plan`, and images returned by tools such as `read_image` and MCP servers.
+Sign in with your GitHub account and use every Copilot model your plan includes — GPT-5 family, Claude, Gemini, and more — inside DeepSeek Harness.
+
+The harness already ships a `github-copilot` provider that can serve those models; what it cannot do is sign you in. This plugin fills exactly that gap: it runs the GitHub device flow and publishes the credential that provider authenticates from. Requests, model discovery, images, and streaming are all handled by the harness route, not here. See [`docs/adr/0002-narrow-to-credential-provider.md`](docs/adr/0002-narrow-to-credential-provider.md).
 
 ## Requirements
 
-- **DeepSeek Harness `0.1.1-rc.2` or `0.1.2-alpha.1`.** Both are supported: the
-  adapter probes the loaded `@deepseek-ai/dsh-llm` and selects the matching
-  calling convention. Note that `0.1.2-alpha.1` renamed `CallId` to
-  `ToolCallId`, changed the `requestImageHandleText` signature, and made the
-  request-image offload placeholder caller-supplied — so **plugin versions
-  `≤ 0.4.2` do not load on `0.1.2-alpha.1`**. Upgrade this plugin together with
-  the harness.
-- The vision path uses native image APIs (`AttachmentStore.readImageRequest`,
-  `offloadRequestImagesWithPolicy`, `requestImageHandleText`) introduced in
-  `0.1.1-rc.2`; `0.1.0-rc.x` and earlier lack them and will not run this
-  adapter. Upgrade with `npm install -g @deepseek-ai/dsh@latest`.
+- **DeepSeek Harness `0.1.2-alpha.1` or newer**, with its bundled
+  `@deepseek-ai/dsh-llm-pi-ai` route (mounted by default). This plugin writes
+  the credential that route reads.
+- A GitHub account with a Copilot subscription.
 - Node.js ≥ 24.
 
 ## Install
@@ -112,54 +107,37 @@ export GITHUB_COPILOT_OAUTH_TOKEN=<your-github-oauth-token>
 
 ## Features
 
-**Model discovery** — available models are fetched live from `https://api.githubcopilot.com/models` on each login and cached for 5 minutes. No static list to maintain. On Harness `0.1.2-alpha.1` and newer a discovery started from the Settings page is cancellable, and cancelling leaves the cached catalog as it was rather than emptying the model picker.
+**Device-flow sign-in** — no token to create or paste. Run `/copilot-login`, or use the Settings page, and authorize in the browser; the credential is stored automatically.
 
-**Vision support** — models that declare `supports.vision: true` (e.g. `gpt-4.1`, `gpt-4o`) accept images from every source Harness produces: pasted or dragged images in the composer, `/goal` and `/plan` attachments, and tool-result images (`read_image`, MCP servers). Images are derived per model route through the Harness attachment service (`readImageRequest`), tagged with a stable handle, and sent over both wire protocols. When a request exceeds a model's image count or the local inline byte budget, older request images are offloaded first while the current user submission and the latest tool-result batch are protected; a stable placeholder marks any omitted image without altering the durable history. Set `imageOverflowPolicy: error` to reject over-limit requests instead.
+**Automatic refresh, handled downstream** — the credential carries your long-lived GitHub token. The harness route exchanges it for a short-lived Copilot token, refreshes it, and derives your account's API endpoint (individual, business, or enterprise) on its own.
 
-**Recoverable images** — on Harness `0.1.2-alpha.1` and newer, every image the model sees is annotated with a read-only path to its normalized copy in the tool execution world. The model receives a downscaled preview but can re-read the full file when it needs detail, and an image offloaded to fit a request limit stays recoverable instead of being simply gone. The path resolves through the Harness filesystem provider, so workspace and sandbox confinement still apply; when no mapping exists the annotation is omitted and nothing else changes.
+**Ambient token adoption** — an existing `GITHUB_COPILOT_OAUTH_TOKEN`, whether exported or stored from an earlier version of this plugin, is adopted on start so you are not asked to sign in twice.
 
-**Two wire protocols** — the adapter speaks both OpenAI Chat Completions (`/chat/completions`) and the newer Responses API (`/responses`). The correct endpoint is chosen automatically per model.
+**Settings page** — a dedicated **GitHub Copilot** section in the Harness Web settings UI (gear icon → **GitHub Copilot**) for signing in, checking status, and signing out. Models are selected under **Settings → Models**, in the `github-copilot` provider.
 
-**Reasoning control** — effort levels (`low / medium / high / max`) are forwarded to models that declare them (`gpt-5.x`, Claude thinking budget, Gemini reasoning).
+**Slash commands** — `/copilot-login`, `/copilot-status`, and `/copilot-logout` for surfaces without the settings UI.
 
-**Automatic token refresh** — the short-lived Copilot API token is renewed transparently before it expires; no action required.
+## Selecting a model
 
-**Turn token usage** — every response reports the provider's exact token accounting, including its own total, so the Harness **Turn usage** panel (`0.1.2-alpha.1` and newer) shows uncached input, cached input, output, reasoning, and the cache hit rate for each turn.
+Signing in publishes the credential; it does not pick a model. After signing in, open **Settings → Models**, add the **`github-copilot`** provider, and choose a model there.
 
-**Settings page** — the plugin adds a dedicated **GitHub Copilot** section to the Harness Web settings UI (open DSH in your browser → click the gear icon → **GitHub Copilot**). From there you can sign in, view authentication status and the available model list, and sign out — no slash commands required.
+## Upgrading from 0.4.x
+
+Versions up to 0.4.5 registered their own `github-copilot-official` provider. That provider no longer exists. If your settings or sessions name it, switch them to the `github-copilot` provider — the model ids are the same. Your stored credential is adopted automatically; you do not need to sign in again.
 
 ## Configure
 
-The plugin works with no configuration. To override defaults, edit the profile's `cordis.patch.yml`:
+The plugin works with no configuration. The only setting is which credential
+reference holds the GitHub OAuth token:
 
 ```yaml
 - id: llm-github-copilot
   config:
-    oauthTokenEnv: GITHUB_COPILOT_OAUTH_TOKEN   # env var that holds the GitHub OAuth token
-    baseURL: https://api.githubcopilot.com       # override Copilot API host
-    defaultContextWindow: 262144
-    defaultMaxTokens: 32768
-    streamIdleTimeoutMs: 300000
-    imageOverflowPolicy: offload-oldest         # offload-oldest | error
-    defaultImagePixelBudget: 4194304            # request-image pixel budget (2048×2048)
-    maxInlineRequestImageBytes: 20971520        # total Base64 request-image budget (20 MiB)
-    inlineImageOffloadByteQuantum: 10485760     # oldest-image removal step (10 MiB)
-    models: []   # optional static fallback catalog; leave empty to use live discovery
+    oauthTokenEnv: GITHUB_COPILOT_OAUTH_TOKEN   # credential reference / env var
 ```
 
-Static fallback models may declare vision capability explicitly (used only when
-live `/models` discovery fails); capability is never inferred from a model name:
-
-```yaml
-    models:
-      - id: custom-vision-model
-        inputModalities: [text, image]
-        vision:
-          maxImageBytes: 3145728
-          maxImages: 1
-          mediaTypes: [image/jpeg, image/png, image/webp]
-          imagePixelBudget: 4194304
-```
+Everything about models, endpoints, and request behaviour is configured on the
+harness route under the `llm-pi-ai` settings section, not here.
 
 ## Develop
 
@@ -203,7 +181,7 @@ Your egress IP is restricted. Export `HTTPS_PROXY` pointing to a proxy that exit
 Transient network issue during device-code polling. Run `/copilot-login` again to get a fresh code (the old one is invalidated automatically).
 
 **`configurable provider "github-copilot" is already declared`**
-An older version of this plugin used the route name `github-copilot`, which conflicts with a DSH built-in. This version uses `github-copilot-official`. Verify that your `cordis.patch.yml` uses `id: llm-github-copilot` and `name: '@lujianjun19/dsh-llm-github-copilot'`.
+This plugin registers no provider of its own — it publishes a credential for the harness's `github-copilot` provider. If no models appear, confirm you signed in (`/copilot-status`) and that the `github-copilot` provider is added under **Settings → Models**. Verify that your `cordis.patch.yml` uses `id: llm-github-copilot` and `name: '@lujianjun19/dsh-llm-github-copilot'`.
 
 **Token expired**
 No action needed. The plugin stores the long-lived GitHub OAuth token and refreshes the short-lived Copilot API token automatically before it expires. Only an explicit sign-out or token revocation requires a new `/copilot-login`.

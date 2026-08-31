@@ -33,8 +33,11 @@ test('ordered source fragments exactly reproduce release artifacts', async () =>
 test('source remains split into bounded logical files', async () => {
   const host = await fragments('host')
   const client = await fragments('client')
-  assert.ok(host.length >= 12)
-  assert.ok(client.length >= 10)
+  // Floors guard against collapsing the source into one file; they are not a
+  // target. The host floor dropped from 12 when ADR-0002 removed the adapter,
+  // both serializers, the stream translation, and the image pipeline.
+  assert.ok(host.length >= 6, `host collapsed to ${host.length} fragments`)
+  assert.ok(client.length >= 10, `client collapsed to ${client.length} fragments`)
   for (const file of [...host, ...client]) {
     const lines = file.text.split('\n').length
     assert.ok(lines <= 450, `${file.name} grew to ${lines} lines; split it before adding more behavior`)
