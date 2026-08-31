@@ -30,6 +30,11 @@ docs/VISION_AND_DOCUMENT_HANDOFF.zh-CN.md
 
 Do not expand that scope (especially generic composer file upload or DSH core changes) without explicit user approval.
 
+**Read `docs/adr/0002-narrow-to-credential-provider.md` first.** It accepts
+removing the vision pipeline along with the rest of the adapter, so new work
+against the vision spec is very likely wasted. The spec still describes what
+the plugin does *today*; it no longer describes where it is going.
+
 ## DeepSeek Harness version dependency
 
 - This plugin supports **`@deepseek-ai/dsh` `0.1.1-rc.2` and `0.1.2-alpha.1`**
