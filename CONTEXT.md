@@ -25,9 +25,17 @@ route derives).
 The credential record carrying the Long-lived token, written where the
 Consuming route reads it. Its payload format belongs to that route, not to this
 plugin, so it is written verbatim and read back only for the fields this plugin
-needs.
+needs. An optional `enterpriseUrl` field names the GitHub Enterprise domain the
+Device flow targeted; when absent the Consuming route defaults to github.com.
 _Avoid_: credential (the plugin also uses a plain reference; the record is the
 one the handoff depends on), secret.
+
+**Enterprise domain**:
+A GitHub Enterprise hostname the sign-in targets instead of github.com. The
+Device flow runs against `https://<domain>/login/device/code`, the Grant record
+carries it as `enterpriseUrl`, and the Consuming route exchanges tokens and
+derives endpoints under that domain.
+_Avoid_: GHE (product name; use the abstract role), company name.
 
 **Handoff**:
 Writing the Grant record and stopping. Everything downstream — token exchange,

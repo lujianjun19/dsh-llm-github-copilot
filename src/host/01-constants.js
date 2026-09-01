@@ -30,10 +30,40 @@ const PI_AI_PROVIDER = "github-copilot";
  */
 const DEFAULT_OAUTH_TOKEN_ENV = "GITHUB_COPILOT_OAUTH_TOKEN";
 
-/** GitHub OAuth device-flow endpoints (github.com). */
-const DEVICE_CODE_URL = "https://github.com/login/device/code";
-const ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token";
-const VERIFICATION_URI = "https://github.com/login/device";
+/**
+ * The default GitHub host. A GitHub Enterprise sign-in substitutes its own
+ * domain everywhere this host appears: the device flow below, and — in the
+ * consuming route, keyed off the grant's `enterpriseUrl` — the Copilot token
+ * exchange and API.
+ */
+const GITHUB_COM = "github.com";
+
+/**
+ * Device-flow endpoints for one GitHub host. The verification URI is only a
+ * fallback: GitHub returns its own in the device-code response.
+ */
+function deviceFlowEndpoints(domain) {
+  return {
+    deviceCodeUrl: `https://${domain}/login/device/code`,
+    accessTokenUrl: `https://${domain}/login/oauth/access_token`,
+    verificationUri: `https://${domain}/login/device`
+  };
+}
+
+/**
+ * Normalize a GitHub Enterprise domain or URL to its bare hostname.
+ * @param {string | undefined} input - what the user typed; blank means github.com.
+ * @returns {string | undefined | null} the hostname, undefined for github.com, null for unparseable input.
+ */
+function normalizeEnterpriseDomain(input) {
+  const trimmed = (input ?? "").trim();
+  if (!trimmed) return void 0;
+  try {
+    return new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`).hostname || null;
+  } catch {
+    return null;
+  }
+}
 
 /** VS Code's public GitHub App client id — produces ghu_* tokens that can be exchanged. */
 const OAUTH_CLIENT_ID = "Iv1.b507a08c87ecfe98";

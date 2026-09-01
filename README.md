@@ -89,6 +89,16 @@ To sign out:
 /copilot-logout
 ```
 
+### GitHub Enterprise
+
+Sign in against a GitHub Enterprise server by passing its domain to the login command:
+
+```
+/copilot-login westpac.ghe.com
+```
+
+The plugin normalizes URLs and bare hostnames, and stores the domain in the credential record so the harness's Copilot provider exchanges tokens and derives endpoints under that domain instead of github.com. A blank domain (or omitting the argument) signs in against github.com as before.
+
 You can also set the token directly as an environment variable (useful for CI or headless setups):
 
 ```sh

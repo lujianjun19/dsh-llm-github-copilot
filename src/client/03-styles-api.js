@@ -19,11 +19,12 @@
       versionLink: { color: "var(--dsw-alias-brand-primary)" }
     };
 
-    async function request(path, method = "GET") {
+    async function request(path, method = "GET", body) {
       const response = await fetch(`${API}${path}`, {
         method,
-        headers: { accept: "application/json" },
-        cache: "no-store"
+        headers: { accept: "application/json", ...body === void 0 ? {} : { "content-type": "application/json" } },
+        ...body === void 0 ? {} : { body: JSON.stringify(body) },
+    cache: "no-store"
       });
       let payload;
       try {
@@ -36,4 +37,3 @@
       }
       return payload.value;
     }
-

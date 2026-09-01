@@ -88,6 +88,16 @@ dsh web
 /copilot-logout
 ```
 
+### GitHub Enterprise
+
+针对 GitHub Enterprise 服务器，在登录命令中传入其域名即可：
+
+```
+/copilot-login westpac.ghe.com
+```
+
+插件会将 URL 和裸主机名规范化，并将域名存入凭据记录中，使 Harness 的 Copilot 提供方在该域名下（而非 github.com）进行 token 交换和端点寻址。空白域名（或省略参数）仍按 github.com 登录。
+
 也可以直接通过环境变量设置 token（适用于 CI 或无界面场景）：
 
 ```sh

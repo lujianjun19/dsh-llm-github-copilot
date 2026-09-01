@@ -26,11 +26,33 @@ function piAiRecordKey() {
  * and the account's endpoint back into this same record, so seeding them with
  * empty values is what tells it the grant is unexchanged.
  *
+ * `enterpriseUrl` belongs to the consuming route (`llm-pi-ai`): when present,
+ * it exchanges tokens against and derives endpoints under that domain instead
+ * of github.com.
+ *
  * @param {string} token - the long-lived GitHub OAuth token.
+ * @param {string} [enterpriseDomain] - the enterprise hostname, or undefined for github.com.
  * @returns {{ kind: 'grant', payload: object }}
  */
-function piAiGrantRecord(token) {
-  return { kind: "grant", payload: { type: "oauth", refresh: token, access: "", expires: 0 } };
+function piAiGrantRecord(token, enterpriseDomain) {
+  return {
+    kind: "grant",
+    payload: {
+      type: "oauth", refresh: token, access: "", expires: 0,
+      ...enterpriseDomain === void 0 ? {} : { enterpriseUrl: enterpriseDomain }
+    }
+  };
+}
+
+/**
+ * The enterprise domain inside a stored grant, when the sign-in targeted one.
+ * @param {object | undefined} record - the stored credential record.
+ * @returns {string | undefined} the hostname, or undefined for github.com.
+ */
+function grantEnterpriseDomain(record) {
+  if (record?.kind !== "grant") return void 0;
+  const domain = record.payload?.enterpriseUrl;
+  return typeof domain === "string" && domain.length > 0 ? domain : void 0;
 }
 
 /**
