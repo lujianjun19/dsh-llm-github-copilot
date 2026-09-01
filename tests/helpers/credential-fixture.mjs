@@ -49,15 +49,21 @@ export async function credentialFixture(t, { layers = [], ref = DEFAULT_OAUTH_TO
   const plugin = ctx.plugin(child => apply(child, Config({ oauthTokenEnv: ref })))
   fibers.push(plugin)
   await plugin
-  const command = async name => {
+  const command = async (name, invocation = {}) => {
     const definition = commands.get(name)
     assert.ok(definition, `missing command ${name}`)
-    return definition.handler({})
+    return definition.handler(invocation)
   }
-  const request = async (action, method = 'GET') => {
+  const request = async (action, method = 'GET', body) => {
     const route = routes.get(`/api/github-copilot-auth/${action}`)
     assert.ok(route, `missing Web route ${action}`)
-    const response = await route.fetch(new Request(`http://localhost${route.path}`, { method }))
+    const response = await route.fetch(new Request(`http://localhost${route.path}`, {
+      method,
+      ...body === undefined ? {} : {
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+    }))
     assert.equal(response.status, 200)
     const payload = await response.json()
     assert.equal(payload.ok, true)

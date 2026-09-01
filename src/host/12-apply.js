@@ -69,13 +69,17 @@ function apply(ctx, config) {
    * The reference write is skipped when the launching environment supplies the
    * reference read-only: Harness releases before 0.2.1 reject that `set`, and
    * the environment already resolves the reference, so the grant alone suffices.
+   *
+   * `enterpriseDomain` is carried into the grant as `enterpriseUrl` so the
+   * consuming route exchanges tokens and derives endpoints under that GitHub
+   * Enterprise host; undefined keeps the github.com default.
    */
-  const storeRawOAuthToken = async (token) => {
+  const storeRawOAuthToken = async (token, enterpriseDomain) => {
     const credentials = ctx.get("credentials");
     if (credentials === void 0) {
       throw new Error(`${name}: signing in needs the credentials service; mount dsh-credentials-local`);
     }
-    await credentials.modifyRecord(piAiRecordKey(), async () => piAiGrantRecord(token));
+    await credentials.modifyRecord(piAiRecordKey(), async () => piAiGrantRecord(token, enterpriseDomain));
     if (grantToken(await credentials.readRecord(piAiRecordKey())) !== token) {
       throw new Error(
         `${name}: the credential record at ${PI_AI_RECORD_SCOPE}/${PI_AI_PROVIDER} did not survive the write;`
@@ -97,10 +101,13 @@ function apply(ctx, config) {
    */
   const seedGrantFromReference = async () => {
     try {
-      if (grantToken(await readGrant()) !== void 0) return;
+      const record = await readGrant();
+      if (grantToken(record) !== void 0) return;
       const existing = await resolveRawOAuthToken();
       if (existing === void 0) return;
-      await storeRawOAuthToken(existing);
+      // A record that already names an enterprise host keeps it: the token is
+      // being re-adopted, not re-pointed at github.com.
+      await storeRawOAuthToken(existing, grantEnterpriseDomain(record));
       ctx.logger.info(
         `${name}: adopted the existing ${options().oauthTokenEnv} token into the`
         + ` ${PI_AI_RECORD_SCOPE}/${PI_AI_PROVIDER} credential`,
@@ -144,7 +151,8 @@ function apply(ctx, config) {
     ...flow.verificationUri === void 0 ? {} : { verificationUri: flow.verificationUri },
     ...flow.userCode === void 0 ? {} : { userCode: flow.userCode },
     ...flow.expiresAt === void 0 ? {} : { expiresAt: flow.expiresAt },
-    ...flow.message === void 0 ? {} : { message: flow.message }
+    ...flow.message === void 0 ? {} : { message: flow.message },
+    ...flow.enterpriseDomain === void 0 ? {} : { enterpriseDomain: flow.enterpriseDomain }
   };
   const schedulePoll = (device) => {
     clearAuthTimers();
@@ -155,7 +163,8 @@ function apply(ctx, config) {
       state: "pending",
       verificationUri: device.verificationUri,
       userCode: device.userCode,
-      expiresAt: deadline
+      expiresAt: deadline,
+      ...device.domain === void 0 ? {} : { enterpriseDomain: device.domain }
     };
     let timer;
     const finish = (state, message) => {
@@ -174,7 +183,7 @@ function apply(ctx, config) {
       if (generation !== authGeneration) return;
       if (result.state === "done") {
         try {
-          await storeRawOAuthToken(result.token);
+          await storeRawOAuthToken(result.token, device.domain);
           finish("authenticated");
           ctx.logger.info(
             `${name}: GitHub Copilot sign-in completed; the ${PI_AI_PROVIDER} route can now authenticate`,
@@ -212,22 +221,39 @@ function apply(ctx, config) {
     // Model ids are read back from the record the consuming route maintains,
     // never interrogated here: this plugin owns no catalog.
     const modelIds = grantModelIds(record);
+    const enterpriseDomain = grantEnterpriseDomain(record);
     return {
       authenticated: true,
       state: "authenticated",
       credential: options().oauthTokenEnv,
       provider: PI_AI_PROVIDER,
       ...stored === void 0 ? { credentialRemaining: true } : {},
-      ...modelIds === void 0 ? {} : { modelCount: modelIds.length }
+      ...modelIds === void 0 ? {} : { modelCount: modelIds.length },
+      ...enterpriseDomain === void 0 ? {} : { enterpriseDomain }
     };
   };
-  const beginLogin = async () => {
+  /**
+   * The enterprise domain in a login request. The Web route posts
+   * `{ enterpriseDomain }` and the slash command passes its raw input, so both
+   * shapes arrive here; anything else means github.com.
+   * @param {unknown} request - the login body or command input.
+   * @returns {string | undefined} what the user typed, or undefined.
+   */
+  const requestedDomain = (request) => {
+    if (typeof request === "string") return request;
+    const domain = request?.enterpriseDomain;
+    return typeof domain === "string" ? domain : void 0;
+  };
+  const beginLogin = async (request) => {
     const existing = await resolveRawOAuthToken();
     if (existing !== void 0) return authStatus();
     if (authFlow?.state === "pending" && typeof authFlow.expiresAt === "number" && Date.now() < authFlow.expiresAt) {
       return { authenticated: false, ...publicFlow(authFlow) };
     }
-    const device = await startDeviceFlow();
+    const rawDomain = requestedDomain(request);
+    const domain = normalizeEnterpriseDomain(rawDomain);
+    if (domain === null) return { authenticated: false, state: "error", message: "Not a valid GitHub Enterprise domain: " + String(rawDomain) };
+    const device = await startDeviceFlow(domain);
     schedulePoll(device);
     return { authenticated: false, ...publicFlow(authFlow) };
   };
@@ -259,9 +285,23 @@ function apply(ctx, config) {
     status,
     headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
   });
-  const fetchAction = (action) => async () => {
+  /**
+   * The JSON body a POST action was called with, or undefined for an empty one.
+   * The route is registered with `requestBody: "buffered"`, so the request is
+   * readable here; a malformed body is treated as no body at all.
+   */
+  const jsonBody = async (request) => {
+    if (request === void 0 || request.body === null) return void 0;
     try {
-      return jsonResponse(200, { ok: true, value: await action() });
+      const text = await request.text();
+      return text.length === 0 ? void 0 : JSON.parse(text);
+    } catch {
+      return void 0;
+    }
+  };
+  const fetchAction = (action) => async (request) => {
+    try {
+      return jsonResponse(200, { ok: true, value: await action(await jsonBody(request)) });
     } catch (error) {
       return jsonResponse(500, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }
@@ -300,10 +340,10 @@ function apply(ctx, config) {
   ctx.inject(["commands"], (cctx) => {
     cctx.commands.register({
       name: "copilot-login",
-      description: "Sign in to GitHub Copilot via the device flow",
-      handler: async () => {
+      description: "Sign in to GitHub Copilot via the device flow; pass an enterprise domain for GHE (e.g. company.ghe.com)",
+      handler: async (invocation) => {
         try {
-          const status = await beginLogin();
+          const status = await beginLogin(invocation?.rawInput);
           if (status.credentialRemaining) return { kind: "success", text: remainingCredentialNotice(status.credential) };
           if (status.authenticated) return {
             kind: "success",
@@ -376,4 +416,3 @@ function apply(ctx, config) {
   });
 }
 //#endregion
-

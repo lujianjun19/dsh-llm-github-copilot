@@ -90,6 +90,14 @@ To remove the local credential:
 
 The Web UI asks for confirmation. Sign-out deletes the grant and any writable token reference; it does not revoke the GitHub authorization or remove the configured model provider. If a read-only reference or environment/`.env` fallback still supplies a token, the UI and commands explicitly report that sign-out is incomplete and tell you to remove the external token and restart. The status API exposes `credentialRemaining: true` in this case and never returns the token itself.
 
+### GitHub Enterprise
+
+Sign in against a GitHub Enterprise server by passing its domain as an argument to `/copilot-login` — for example `/copilot-login company.ghe.com`.
+
+The plugin normalizes URLs and bare hostnames (`https://company.ghe.com/some/path` and `company.ghe.com` both become `company.ghe.com`), runs the device flow against `https://<domain>/login/device/code`, and stores the domain in the credential record as `enterpriseUrl`. The Harness route reads that field and exchanges tokens and derives endpoints under the same domain instead of github.com. A blank domain, or omitting the argument, signs in against github.com as before. An unparseable domain is rejected with an error instead of silently falling back to github.com.
+
+In the Web UI, the sign-in page's optional **GitHub Enterprise domain** field posts the same value to the login endpoint as `{ "enterpriseDomain": "company.ghe.com" }`. `/copilot-status` reports the stored domain.
+
 ### Use an existing OAuth token
 
 You can supply a long-lived GitHub OAuth token instead of using the device flow:

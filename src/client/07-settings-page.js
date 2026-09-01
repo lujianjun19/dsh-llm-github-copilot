@@ -6,6 +6,7 @@
       const [copied, setCopied] = useState(false);
       const [confirmLogout, setConfirmLogout] = useState(false);
       const [acknowledged, setAcknowledged] = useState(false);
+      const [enterpriseDomain, setEnterpriseDomain] = useState("");
 
       const refresh = async () => {
         try {
@@ -36,7 +37,10 @@
         setBusy(true);
         setError(void 0);
         try {
-          const next = await request("/login", "POST");
+          // A blank domain is sent as no body at all, so the Host signs in
+          // against github.com exactly as it did before this field existed.
+          const domain = enterpriseDomain.trim();
+          const next = await request("/login", "POST", domain.length === 0 ? void 0 : { enterpriseDomain: domain });
           setStatus(next);
           if (next.authenticated) await refresh();
         } catch (cause) {
@@ -97,6 +101,21 @@
                 ]
               }),
               error === void 0 ? null : jsx("p", { role: "alert", style: css.error, children: error }),
+              !authenticated && !pending
+                ? jsxs("div", {
+                    style: css.field,
+                    children: [
+                      jsx("span", { style: css.label, children: text("enterpriseDomainLabel") }),
+                      jsx(Input, {
+                        value: enterpriseDomain,
+                        placeholder: text("enterpriseDomainPlaceholder"),
+                        "aria-label": text("enterpriseDomainLabel"),
+                        disabled: busy,
+                        onChange: (event) => { setEnterpriseDomain(event.target.value); }
+                      })
+                    ]
+                  })
+                : null,
               status?.credentialRemaining
                 ? jsx("p", { role: "status", style: css.body, children: text("remainingCredentialHint", { credential: status.credential }) })
                 : null,
@@ -115,6 +134,9 @@
                 ? jsxs(React.Fragment, {
                     children: [
                       jsx("p", { style: css.body, children: text("credential", { credential: status.credential ?? "GITHUB_COPILOT_OAUTH_TOKEN" }) }),
+                      typeof status.enterpriseDomain === "string" && status.enterpriseDomain.length > 0
+                        ? jsx("p", { style: css.body, children: text("enterpriseDomain", { domain: status.enterpriseDomain }) })
+                        : null,
                       typeof status.modelCount === "number"
                         ? jsx("p", { style: { ...css.body, fontWeight: 500 }, children: text("models", { count: status.modelCount }) })
                         : null,

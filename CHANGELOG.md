@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
+## [Unreleased]
+
+### Added
+
+- **Sign in against GitHub Enterprise domains.** `/copilot-login` accepts an
+  optional domain argument (`/copilot-login company.ghe.com`) and the Web
+  settings page an optional domain field, which posts `{ "enterpriseDomain": … }`
+  to the login route. URLs and bare hostnames are normalized to a hostname;
+  unparseable input is refused rather than silently falling back to github.com.
+  The device flow runs against `https://<domain>/login/device/code`, and the
+  grant record carries the domain as `enterpriseUrl` so the Harness route
+  exchanges tokens and derives endpoints under the same host. Omitting the
+  domain keeps the github.com behaviour.
+
 ## [0.4.11] - 2026-10-24
 
 ### Fixed
