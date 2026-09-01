@@ -67,12 +67,12 @@ function apply(ctx, config) {
    * belongs to another plugin: a shape it stops accepting must fail loudly here
    * rather than leave a credential that silently authenticates nothing.
    */
-  const storeRawOAuthToken = async (token) => {
+  const storeRawOAuthToken = async (token, enterpriseDomain) => {
     const credentials = ctx.get("credentials");
     if (credentials === void 0) {
       throw new Error(`${name}: signing in needs the credentials service; mount dsh-credentials-local`);
     }
-    await credentials.modifyRecord(piAiRecordKey(), async () => piAiGrantRecord(token));
+    await credentials.modifyRecord(piAiRecordKey(), async () => piAiGrantRecord(token, enterpriseDomain));
     if (grantToken(await credentials.readRecord(piAiRecordKey())) !== token) {
       throw new Error(
         `${name}: the credential record at ${PI_AI_RECORD_SCOPE}/${PI_AI_PROVIDER} did not survive the write;`
@@ -136,7 +136,8 @@ function apply(ctx, config) {
     ...flow.verificationUri === void 0 ? {} : { verificationUri: flow.verificationUri },
     ...flow.userCode === void 0 ? {} : { userCode: flow.userCode },
     ...flow.expiresAt === void 0 ? {} : { expiresAt: flow.expiresAt },
-    ...flow.message === void 0 ? {} : { message: flow.message }
+    ...flow.message === void 0 ? {} : { message: flow.message },
+    ...flow.enterpriseDomain === void 0 ? {} : { enterpriseDomain: flow.enterpriseDomain }
   };
   const schedulePoll = (device) => {
     clearAuthTimers();
@@ -147,7 +148,8 @@ function apply(ctx, config) {
       state: "pending",
       verificationUri: device.verificationUri,
       userCode: device.userCode,
-      expiresAt: deadline
+      expiresAt: deadline,
+      ...device.domain === void 0 ? {} : { enterpriseDomain: device.domain }
     };
     let timer;
     const finish = (state, message) => {
@@ -166,7 +168,7 @@ function apply(ctx, config) {
       if (generation !== authGeneration) return;
       if (result.state === "done") {
         try {
-          await storeRawOAuthToken(result.token);
+          await storeRawOAuthToken(result.token, device.domain);
           finish("authenticated");
           ctx.logger.info(
             `${name}: GitHub Copilot sign-in completed; the ${PI_AI_PROVIDER} route can now authenticate`,
@@ -203,15 +205,17 @@ function apply(ctx, config) {
     // Model ids are read back from the record the consuming route maintains,
     // never interrogated here: this plugin owns no catalog.
     const modelIds = grantModelIds(record);
+    const enterpriseDomain = grantEnterpriseDomain(record);
     return {
       authenticated: true,
       state: "authenticated",
       credential: options().oauthTokenEnv,
       provider: PI_AI_PROVIDER,
-      ...modelIds === void 0 ? {} : { modelCount: modelIds.length }
+      ...modelIds === void 0 ? {} : { modelCount: modelIds.length },
+      ...enterpriseDomain === void 0 ? {} : { enterpriseDomain }
     };
   };
-  const beginLogin = async () => {
+  const beginLogin = async (rawDomain) => {
     const existing = await resolveRawOAuthToken();
     if (existing !== void 0) return {
       authenticated: true,
@@ -222,7 +226,9 @@ function apply(ctx, config) {
     if (authFlow?.state === "pending" && typeof authFlow.expiresAt === "number" && Date.now() < authFlow.expiresAt) {
       return { authenticated: false, ...publicFlow(authFlow) };
     }
-    const device = await startDeviceFlow();
+    const domain = normalizeEnterpriseDomain(rawDomain);
+    if (domain === null) return { authenticated: false, state: "error", message: "Not a valid GitHub Enterprise domain: " + String(rawDomain) };
+    const device = await startDeviceFlow(domain);
     schedulePoll(device);
     return { authenticated: false, ...publicFlow(authFlow) };
   };
@@ -249,13 +255,14 @@ function apply(ctx, config) {
     res.end(JSON.stringify(body));
   };
   const webAction = (method, action) => async (req, res) => {
+    const jsonBody = async () => { try { let t = ""; for await (const c of req) t += c; return t ? JSON.parse(t) : void 0; } catch { return void 0; } };
     if (req.method !== method) {
       res.setHeader("allow", method);
       sendJson(res, 405, { ok: false, error: `Use ${method}` });
       return;
     }
     try {
-      sendJson(res, 200, { ok: true, value: await action() });
+      sendJson(res, 200, { ok: true, value: await action(await jsonBody()) });
     } catch (error) {
       sendJson(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) });
     }
@@ -289,10 +296,10 @@ function apply(ctx, config) {
   ctx.inject(["commands"], (cctx) => {
     cctx.commands.register({
       name: "copilot-login",
-      description: "Sign in to GitHub Copilot via the device flow",
-      handler: async () => {
+      description: "Sign in to GitHub Copilot via the device flow; pass an enterprise domain for GHE (e.g. company.ghe.com)",
+      handler: async (invocation) => {
         try {
-          const status = await beginLogin();
+          const status = await beginLogin(invocation?.rawInput);
           if (status.authenticated) return {
             kind: "success",
             text: `GitHub Copilot is already authenticated. Run /copilot-status for details.`
@@ -361,4 +368,3 @@ function apply(ctx, config) {
   });
 }
 //#endregion
-
