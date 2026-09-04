@@ -113,10 +113,12 @@ function apply(ctx, config) {
     }, `${name}: adopt an existing token`);
   });
 
-  installSettingsSection(ctx, NS, Config, config, {
-    setSource: (source) => {
-      current = source;
-    }
+  ctx.inject(["settings"], (settingsCtx) => {
+    settingsCtx.settings.installSection(ctx, NS, Config, config, {
+      setSource: (source) => {
+        current = source;
+      }
+    });
   });
 
   // ── shared OAuth controller (commands + Web settings page) ────────────────
