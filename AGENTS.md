@@ -40,10 +40,11 @@ approval — that is the whole of what ADR-0002 decided.
 
 ## DeepSeek Harness version dependency
 
-- This plugin requires **`@deepseek-ai/dsh` `0.1.2-alpha.1` or newer**, with
-  `@deepseek-ai/cordis` `^4.0.1`. See `peerDependencies` in `package.json`.
-  The floor is the consuming route, not an API this plugin calls: earlier
-  releases ship no Copilot provider for the credential to serve.
+- This plugin requires **`@deepseek-ai/dsh` `0.1.5-rc.1` or newer**, with
+  `@deepseek-ai/cordis` `^4.0.2`. See `peerDependencies` in `package.json`.
+  The floor includes the Web client's `credentials/reference-updated` event,
+  which closes the device-flow dialog once the credential reference commits;
+  earlier releases expose an incompatible client-event surface.
 - **`@deepseek-ai/dsh-llm` is deliberately not a dependency.** Every breaking
   change that forced v0.4.3, v0.4.4, and v0.4.5 came through it. If a change
   here reaches for it, that is a signal the plugin is growing back into an
@@ -53,11 +54,10 @@ approval — that is the whole of what ADR-0002 decided.
   are read back and compared in `storeRawOAuthToken()` so an upstream format
   change fails loudly instead of leaving a credential that authenticates
   nothing. Keep that check.
-- Client packages differ across harness versions: `@deepseek-ai/dsh-client-runtime`
-  is gone in `0.1.2-alpha.1`, where `slots` comes from
-  `@deepseek-ai/dsh-client-ui-renderer` and `sessions` from
-  `@deepseek-ai/dsh-api-session-controller`. `dsh.client.inject` lists all
-  three; the loader skips inject entries absent from the graph.
+- In `0.1.5-rc.1`, `@deepseek-ai/dsh-client-runtime` is unavailable. `slots`
+  comes from `@deepseek-ai/dsh-client-ui-renderer` and `sessions` from
+  `@deepseek-ai/dsh-api-session-controller`; list only installed package names
+  in `dsh.client.inject`.
 - Services are resolved dynamically (`ctx.get`, `ctx.inject`), never through a
   static service inject. Activation happens before the credential plane mounts,
   so any credential read or write must be scoped to `ctx.inject(['credentials'])`

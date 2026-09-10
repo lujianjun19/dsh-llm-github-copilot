@@ -6,7 +6,7 @@
       ctx.on("command/executed", (_sessionId, commandName, result) => {
         showLoginResult(commandName, result);
       });
-      ctx.effect(() => ctx.remote.$on("credentials/updated", (ref) => {
+      ctx.effect(() => ctx.remote.$on("credentials/reference-updated", (ref) => {
         const current = loginDialog.getSnapshot();
         if (!current.open) return;
         // Matching the reference means the credentials service has already

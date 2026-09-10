@@ -4,7 +4,7 @@
     const EN = {
       nav: "GitHub Copilot",
       title: "GitHub Copilot",
-      intro: "Sign in with GitHub OAuth device flow. The plugin stores the long-lived OAuth credential, refreshes short-lived Copilot tokens, and discovers the models available to your account.",
+      intro: "Sign in with GitHub OAuth device flow. The plugin stores the long-lived OAuth credential; the Harness route refreshes short-lived Copilot tokens and discovers the models available to your account.",
       signedIn: "Signed in",
       pending: "Waiting for GitHub authorization",
       signedOut: "Signed out",
@@ -42,7 +42,7 @@
     const ZH = {
       nav: "GitHub Copilot",
       title: "GitHub Copilot",
-      intro: "通过 GitHub OAuth 设备码登录。插件会保存长期 OAuth 凭据、自动刷新短期 Copilot token，并动态发现当前账号可用的模型。",
+      intro: "通过 GitHub OAuth 设备码登录。插件会保存长期 OAuth 凭据；Harness 路由会自动刷新短期 Copilot token，并动态发现当前账号可用的模型。",
       signedIn: "已登录",
       pending: "等待 GitHub 授权",
       signedOut: "未登录",
