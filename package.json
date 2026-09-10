@@ -1,7 +1,7 @@
 {
   "name": "@lujianjun19/dsh-llm-github-copilot",
   "description": "GitHub Copilot credential provider for DeepSeek Harness: OAuth device-flow sign-in for its built-in github-copilot route",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
