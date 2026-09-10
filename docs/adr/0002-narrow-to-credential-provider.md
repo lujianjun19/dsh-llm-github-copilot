@@ -11,3 +11,17 @@ The cost is real and accepted. The provider id changes from `github-copilot-offi
 This decision has a known expiry. `AuthorizationService` exists as an abstract class, so the harness plainly intends to supply an implementation. When one ships and a bundle mounts it, pi-ai's Copilot route becomes usable without this plugin and the remaining justification narrows to the per-model vision limits alone — likely not enough to keep a parallel plugin alive. Re-open this decision when `rg 'extends AuthorizationService'` over the harness, `grep dsh-authorization` over the bundle patches, or `dsh web --dump-config | grep authorization` produces a hit.
 
 Once implemented, ADR-0001 (request-image overflow policy) describes machinery this plugin no longer contains. It is left in place as the record of why that policy was chosen while the adapter existed.
+
+## Compatibility addendum — `dsh-v0.1.5-rc.1`
+
+The Harness now ships a concrete `AuthorizationService`, and `llm-pi-ai` registers
+its provider-native sign-in flows whenever that service is mounted. However,
+neither the `dsh-base` nor `dsh-web-app` bundle patch mounts
+`@deepseek-ai/dsh-authorization`, so the default Web composition still has no
+sign-in surface. This plugin remains necessary for that composition: it runs the
+device flow and writes the same `llm-pi-ai/github-copilot` grant record.
+
+The plugin must not register a second authorization flow for that record. In a
+composition which explicitly mounts authorization, `llm-pi-ai` owns that flow;
+duplicating it would be rejected as `DUPLICATE_FLOW`. Re-open this ADR when a
+shipped bundle mounts authorization, not merely when the service package exists.

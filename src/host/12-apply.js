@@ -113,10 +113,21 @@ function apply(ctx, config) {
     }, `${name}: adopt an existing token`);
   });
 
-  installSettingsSection(ctx, NS, Config, config, {
-    setSource: (source) => {
-      current = source;
-    }
+  // dsh-settings owns the optional-service lifecycle. Keeping the registration
+  // inside this scope preserves the composition config when a settings provider
+  // is absent or later detaches.
+  ctx.inject(["settings"], (settingsCtx) => {
+    settingsCtx.settings.installSection(ctx, NS, Config, config, {
+      setSource: (source) => {
+        current = source;
+      },
+      onChange: () => {
+        // Options are otherwise memoized by the settings snapshot identity.
+        // Re-read them on every committed settings update so invalid config
+        // retains the last known-good resolution through the existing guard.
+        void options();
+      }
+    });
   });
 
   // ── shared OAuth controller (commands + Web settings page) ────────────────

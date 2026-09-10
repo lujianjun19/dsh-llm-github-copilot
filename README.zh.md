@@ -10,8 +10,9 @@ Harness 本身已经内置了一个 `github-copilot` 提供方，可以服务这
 
 ## 依赖要求
 
-- **DeepSeek Harness `0.1.2-alpha.1` 或更高版本**，且启用其自带的
+- **DeepSeek Harness `0.1.5-rc.1` 或更高版本**，且启用其自带的
   `@deepseek-ai/dsh-llm-pi-ai` 路由（默认已挂载）。本插件写入的正是该路由读取的凭据。
+  该版本会将凭据引用提交转发给 Web 客户端，因此设备流完成后登录对话框会立即关闭。
 - 一个拥有 Copilot 订阅的 GitHub 账号。
 - Node.js ≥ 24。
 

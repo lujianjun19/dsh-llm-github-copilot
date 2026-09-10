@@ -64,11 +64,26 @@ test('manifest exposes both Host and Web client release faces', async () => {
   assert.equal(manifest.dsh.client.platform, 'web')
   for (const dependency of [
     '@deepseek-ai/dsh-api-remotes',
+    '@deepseek-ai/dsh-api-session-controller',
     '@deepseek-ai/dsh-client-locale',
     '@deepseek-ai/dsh-client-ui-commands',
     '@deepseek-ai/dsh-client-ui-conversation',
     '@deepseek-ai/dsh-client-ui-primitives',
+    '@deepseek-ai/dsh-client-ui-renderer',
+    '@deepseek-ai/dsh-client-ui-settings',
+    '@deepseek-ai/dsh-client-ui-settings-general',
   ]) assert.ok(manifest.dsh.client.inject.includes(dependency), dependency)
+  assert.ok(!manifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-runtime'))
+  for (const [dependency, range] of Object.entries(manifest.peerDependencies)) {
+    if (dependency.startsWith('@deepseek-ai/dsh-')) assert.equal(range, '^0.1.5-rc.1', dependency)
+  }
+  assert.equal(manifest.peerDependencies['@deepseek-ai/cordis'], '^4.0.2')
+})
+
+test('Web client observes the Harness credential-reference commit event', async () => {
+  const source = await readFile(join(root, 'src', 'client', '10-apply.js'), 'utf8')
+  assert.match(source, /ctx\.remote\.\$on\("credentials\/reference-updated"/)
+  assert.doesNotMatch(source, /credentials\/updated/)
 })
 
 test('settings navigation uses the official Primer Copilot octicon path', async () => {

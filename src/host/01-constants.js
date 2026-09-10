@@ -9,7 +9,7 @@ const name = "llm-github-copilot";
  * dynamically so a composition lacking them still loads.
  */
 const inject = [];
-const NS = settingsNamespace("llm-github-copilot");
+const NS = "llm-github-copilot";
 
 const DISPLAY_NAME = "GitHub Copilot";
 

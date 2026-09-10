@@ -5,7 +5,7 @@
       useEffect(() => { if (state.open) setCopied(false); }, [state.open, state.userCode]);
       useEffect(() => {
         if (!state.open) return;
-        // credentials/updated normally closes the dialog immediately. Polling
+        // credentials/reference-updated normally closes the dialog immediately. Polling
         // is a bounded fallback for a reconnect or a missed forwarded event.
         const timer = setInterval(() => { void closeLoginDialogWhenAuthenticated(); }, 2e3);
         return () => { clearInterval(timer); };

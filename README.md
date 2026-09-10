@@ -10,9 +10,11 @@ The harness already ships a `github-copilot` provider that can serve those model
 
 ## Requirements
 
-- **DeepSeek Harness `0.1.2-alpha.1` or newer**, with its bundled
+- **DeepSeek Harness `0.1.5-rc.1` or newer**, with its bundled
   `@deepseek-ai/dsh-llm-pi-ai` route (mounted by default). This plugin writes
-  the credential that route reads.
+  the credential that route reads. This version also forwards credential
+  reference commits to the Web client, so the sign-in dialog closes immediately
+  once the device flow completes.
 - A GitHub account with a Copilot subscription.
 - Node.js ≥ 24.
 
