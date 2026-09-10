@@ -18,10 +18,14 @@ class CopilotAuthError extends Error {
   }
 }
 
-async function startDeviceFlow() {
+/**
+ * @param {string} [domain] - an enterprise hostname; omit for github.com.
+ */
+async function startDeviceFlow(domain) {
+  const endpoints = deviceFlowEndpoints(domain ?? GITHUB_COM);
   let response;
   try {
-    response = await copilotFetch(DEVICE_CODE_URL, {
+    response = await copilotFetch(endpoints.deviceCodeUrl, {
       method: "POST",
       headers: {
         accept: "application/json",
@@ -41,9 +45,11 @@ async function startDeviceFlow() {
   return {
     deviceCode,
     userCode,
-    verificationUri: typeof data.verification_uri === "string" && data.verification_uri.length > 0 ? data.verification_uri : VERIFICATION_URI,
+    verificationUri: typeof data.verification_uri === "string" && data.verification_uri.length > 0 ? data.verification_uri : endpoints.verificationUri,
     interval: Math.max(Number(data.interval) || 5, 1),
-    expiresIn: Number(data.expires_in) || 900
+    expiresIn: Number(data.expires_in) || 900,
+    accessTokenUrl: endpoints.accessTokenUrl,
+    ...domain === void 0 ? {} : { domain }
   };
 }
 async function pollDeviceFlow(device) {
@@ -54,7 +60,7 @@ async function pollDeviceFlow(device) {
   }).toString();
   let response;
   try {
-    response = await copilotFetch(ACCESS_TOKEN_URL, {
+    response = await copilotFetch(device.accessTokenUrl, {
       method: "POST",
       headers: {
         accept: "application/json",

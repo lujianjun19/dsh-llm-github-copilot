@@ -24,6 +24,9 @@
       whereToSelect: "Signing in publishes the credential to the \"{provider}\" provider. Pick a model there under Settings → Models.",
       commandHint: "The /copilot-login, /copilot-status, and /copilot-logout commands remain available on chat surfaces.",
       pluginVersion: "Plugin version:",
+      enterpriseDomainLabel: "GitHub Enterprise domain (optional)",
+      enterpriseDomainPlaceholder: "company.ghe.com",
+      enterpriseDomain: "Enterprise: {domain}",
       loginDialogTitle: "Sign in to GitHub Copilot",
       loginDialogDescription: "Open the GitHub device page, then enter the device code below.",
       openGitHub: "Open GitHub",
@@ -62,6 +65,9 @@
       whereToSelect: "登录后凭据会发布给 \"{provider}\" 提供方。请到设置 → 模型 中选择该提供方下的模型。",
       commandHint: "聊天界面仍可使用 /copilot-login、/copilot-status 和 /copilot-logout。",
       pluginVersion: "插件版本：",
+      enterpriseDomainLabel: "GitHub Enterprise 域名（可选）",
+      enterpriseDomainPlaceholder: "company.ghe.com",
+      enterpriseDomain: "企业域名：{domain}",
       loginDialogTitle: "登录 GitHub Copilot",
       loginDialogDescription: "打开 GitHub 设备登录页面，然后输入下面的设备码。",
       openGitHub: "打开 GitHub",
@@ -77,4 +83,3 @@
       logoutFailed: "GitHub Copilot 退出失败：{message}",
       commandUnavailable: "当前 Host 没有提供 /copilot-logout 命令。"
     };
-
