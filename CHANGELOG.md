@@ -2,6 +2,33 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
+## [0.4.6] - 2026-09-10
+
+### Fixed
+
+- **The plugin now loads on DeepSeek Harness `0.1.5-rc.1`.** The Harness moved
+  optional settings-section wiring from package exports onto
+  `ctx.settings.installSection()`. The plugin now scopes that current API to
+  the settings service, preserving its composition configuration when the
+  service detaches.
+
+- **The Web sign-in dialog observes current credential commits.** It now listens
+  for the forwarded `credentials/reference-updated` event, so a completed device
+  flow closes the dialog immediately instead of waiting for its polling fallback.
+
+### Changed
+
+- The supported Harness baseline is now `0.1.5-rc.1`, with
+  `@deepseek-ai/cordis ^4.0.2`. Peer and development dependencies now resolve
+  against that release family, and the removed `dsh-client-runtime` package is
+  no longer declared as a client dependency.
+
+### Added
+
+- Documented the unresolved ownership of removing GitHub Copilot models from
+  the input model list after logout in
+  [`docs/issues/github-copilot-model-list-refresh.md`](docs/issues/github-copilot-model-list-refresh.md).
+
 ## [0.4.5] - 2026-08-28
 
 ### Added
