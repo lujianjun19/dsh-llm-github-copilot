@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
+## [0.4.7] - 2026-09-24
+
+### Fixed
+
+- **DeepSeek Harness `0.1.7-rc.1` compatibility.** The credential reference is
+  now a Loader-owned volatile Config field and the plugin uses the replacement
+  `settings.configure({ auto: false }, ctx.fiber)` presentation API instead of
+  the removed `settings.installSection()` API.
+- **The Web settings page reaches its Host endpoints on `0.1.7-rc.1`.** Browser
+  requests now traverse the Harness API gateway under
+  `/api/github-copilot-auth`; the Host routes retain their unprefixed paths.
+- **Local deploy includes Schemastery's runtime closure.** `@deepseek-ai/cosmokit`
+  is bundled with `@deepseek-ai/schemastery`, preventing an import failure for
+  its `createVolatile` export in deployed profiles.
+
+### Changed
+
+- The supported Harness baseline is now `0.1.7-rc.1`, with
+  `@deepseek-ai/cordis ^4.0.4` and `@deepseek-ai/schemastery ^3.18.4`.
+  Peer/development ranges and the lockfile now resolve against that family.
+- Documented that the shipped `dsh-authorization` service has no generic
+  Copilot Web sign-in consumer yet. This plugin remains the device-flow UI and
+  must not register a competing authorization flow.
+
 ## [0.4.6] - 2026-09-10
 
 ### Fixed
