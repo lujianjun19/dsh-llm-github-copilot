@@ -2,6 +2,34 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
+## [0.4.8] - 2026-09-24
+
+### Fixed
+
+- **GitHub Copilot sign-in did nothing in the browser (regression in 0.4.7).**
+  The 0.1.7-rc.1 migration in 0.4.7 moved only the *client's* fetch URL to
+  `/api/github-copilot-auth/*`; the *Host* stayed registered on
+  `ctx.webServer.register()` at the old unprefixed path. That raw route table
+  is a separate mechanism from the browser's shared `/api` channel —
+  unauthenticated, and never dispatched to from `/api/*` — so every login,
+  status, and logout request from the browser 404'd. (The v0.4.7 CHANGELOG
+  entry describing this as fixed was itself wrong; see that entry's own
+  "Host routes retain their unprefixed paths" claim, which is the bug.)
+  Status, login, and logout now register through
+  `ctx.connection.fetch.register()`, the harness's actual mechanism for an
+  authenticated Fetch-style (`Request -> Response`) endpoint under `/api`;
+  unauthenticated requests now correctly receive `401` instead of bypassing
+  authentication entirely, which the old raw `webServer` route never enforced.
+
+### Changed
+
+- Added the `@deepseek-ai/dsh-client-connection` peer/development dependency
+  (`^0.1.7-rc.1`) the corrected routing depends on.
+- Documented, in both READMEs, the step that trips up a fresh sign-in even
+  once login itself works: publishing the credential does not add a model
+  route. `github-copilot` must still be added once under **Settings →
+  Models** before it appears in the chat model selector.
+
 ## [0.4.7] - 2026-09-24
 
 ### Fixed
