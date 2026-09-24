@@ -1,4 +1,6 @@
-    const API = "/github-copilot-auth";
+    // The Web API gateway owns the browser-facing /api prefix; the Host still
+    // registers these routes without it on ctx.webServer.
+    const API = "/api/github-copilot-auth";
     const NS = "github-copilot";
     const PLUGIN_VERSION = "__PLUGIN_VERSION__";
     const EN = {

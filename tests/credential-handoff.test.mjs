@@ -11,7 +11,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  DEFAULT_OAUTH_TOKEN_ENV, PI_AI_PROVIDER, PI_AI_RECORD_SCOPE,
+  Config, DEFAULT_OAUTH_TOKEN_ENV, PI_AI_PROVIDER, PI_AI_RECORD_SCOPE, apply,
   grantModelIds, grantToken, piAiGrantRecord, piAiRecordKey, resolveAdapterOptions,
 } from '../lib/index.js'
 
@@ -101,4 +101,35 @@ test('grantModelIds distinguishes "none recorded" from "recorded as empty"', () 
 test('the settings section resolves to just the credential reference', () => {
   assert.deepEqual(resolveAdapterOptions({}), { oauthTokenEnv: DEFAULT_OAUTH_TOKEN_ENV })
   assert.deepEqual(resolveAdapterOptions({ oauthTokenEnv: 'MY_TOKEN' }), { oauthTokenEnv: 'MY_TOKEN' })
+})
+
+test('the credential reference is a Loader-owned volatile Config field', () => {
+  const config = Config({})
+  assert.equal(typeof config.oauthTokenEnv.get, 'function')
+  assert.equal(config.oauthTokenEnv.get(), DEFAULT_OAUTH_TOKEN_ENV)
+})
+
+test('apply configures the 0.1.7 Settings presentation without the removed installSection API', () => {
+  const fiber = {}
+  const calls = []
+  const settings = {
+    configure: (policy, owner) => {
+      calls.push({ policy, owner })
+      return () => {}
+    },
+  }
+  const ctx = {
+    fiber,
+    logger: { error() {}, info() {}, warn() {} },
+    get: () => undefined,
+    on() {},
+    effect(setup) { return setup() },
+    inject(dependencies, callback) {
+      if (dependencies.length === 1 && dependencies[0] === 'settings') {
+        callback({ effect: setup => setup(), settings })
+      }
+    },
+  }
+  apply(ctx, Config({}))
+  assert.deepEqual(calls, [{ policy: { auto: false }, owner: fiber }])
 })

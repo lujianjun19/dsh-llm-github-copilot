@@ -75,13 +75,31 @@ test('manifest exposes both Host and Web client release faces', async () => {
   ]) assert.ok(manifest.dsh.client.inject.includes(dependency), dependency)
   assert.ok(!manifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-runtime'))
   for (const [dependency, range] of Object.entries(manifest.peerDependencies)) {
-    if (dependency.startsWith('@deepseek-ai/dsh-')) assert.equal(range, '^0.1.5-rc.1', dependency)
+    if (!dependency.startsWith('@deepseek-ai/dsh-')) continue
+    assert.equal(range, '^0.1.7-rc.1', dependency)
+    assert.equal(manifest.devDependencies[dependency], range, `${dependency} development range`)
   }
-  assert.equal(manifest.peerDependencies['@deepseek-ai/cordis'], '^4.0.2')
+  assert.equal(manifest.peerDependencies['@deepseek-ai/cordis'], '^4.0.4')
+  assert.equal(manifest.devDependencies['@deepseek-ai/cordis'], '^4.0.4')
+  assert.equal(manifest.dependencies['@deepseek-ai/cosmokit'], '~1.8.5')
+  assert.equal(manifest.dependencies['@deepseek-ai/schemastery'], '^3.18.4')
+  const deploy = await readFile(join(root, 'scripts', 'deploy.mjs'), 'utf8')
+  assert.match(deploy, /bundledDeps = \['undici', '@deepseek-ai\/cosmokit', '@deepseek-ai\/schemastery'\]/)
 })
 
-test('Web client observes the Harness credential-reference commit event', async () => {
+test('Host uses the 0.1.7 volatile configuration and settings-presentation APIs', async () => {
+  const schema = await readFile(join(root, 'src', 'host', '02-schema.js'), 'utf8')
+  const apply = await readFile(join(root, 'src', 'host', '12-apply.js'), 'utf8')
+  assert.match(schema, /oauthTokenEnv: z\.string\(\)\.role\("credential-ref"\)\.default\(DEFAULT_OAUTH_TOKEN_ENV\)\.volatile\(\)/)
+  assert.match(apply, /config\.oauthTokenEnv\.get\(\)/)
+  assert.match(apply, /settingsCtx\.settings\.configure\(\{ auto: false \}, ctx\.fiber\)/)
+  assert.doesNotMatch(apply, /installSection/)
+})
+
+test('Web client uses the API gateway and observes credential-reference commits', async () => {
+  const api = await readFile(join(root, 'src', 'client', '01-i18n.js'), 'utf8')
   const source = await readFile(join(root, 'src', 'client', '10-apply.js'), 'utf8')
+  assert.match(api, /const API = "\/api\/github-copilot-auth"/)
   assert.match(source, /ctx\.remote\.\$on\("credentials\/reference-updated"/)
   assert.doesNotMatch(source, /credentials\/updated/)
 })
