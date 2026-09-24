@@ -25,3 +25,20 @@ The plugin must not register a second authorization flow for that record. In a
 composition which explicitly mounts authorization, `llm-pi-ai` owns that flow;
 duplicating it would be rejected as `DUPLICATE_FLOW`. Re-open this ADR when a
 shipped bundle mounts authorization, not merely when the service package exists.
+
+## Compatibility addendum — `dsh-v0.1.7-rc.1`
+
+The shipped `dsh-base` bundle now mounts `@deepseek-ai/dsh-authorization`, so
+the re-open condition above has been checked. `llm-pi-ai` consequently
+registers its native `github-copilot` flow for the same
+`llm-pi-ai/github-copilot` record. The plugin still must not duplicate that
+flow.
+
+The default release contains no generic Web or Remote consumer that starts a
+pi-ai authorization flow: the only `authorization.begin()` caller is the
+specialised DeepSeek-account provider. The native flow is therefore
+infrastructure without a default Copilot sign-in surface. This plugin remains
+the credential provider until a shipped generic surface can start and render
+the `github-copilot` flow. Re-open this ADR again when that surface ships; at
+that point the device-flow page, endpoints, and slash commands should be
+removed rather than maintained in parallel.

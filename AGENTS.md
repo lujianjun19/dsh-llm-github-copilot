@@ -40,11 +40,12 @@ approval — that is the whole of what ADR-0002 decided.
 
 ## DeepSeek Harness version dependency
 
-- This plugin requires **`@deepseek-ai/dsh` `0.1.5-rc.1` or newer**, with
-  `@deepseek-ai/cordis` `^4.0.2`. See `peerDependencies` in `package.json`.
-  The floor includes the Web client's `credentials/reference-updated` event,
-  which closes the device-flow dialog once the credential reference commits;
-  earlier releases expose an incompatible client-event surface.
+- This plugin requires **`@deepseek-ai/dsh` `0.1.7-rc.1` or newer**, with
+  `@deepseek-ai/cordis` `^4.0.4`. See `peerDependencies` in `package.json`.
+  The floor includes Loader-owned volatile configuration and the Web client's
+  `credentials/reference-updated` event, which closes the device-flow dialog
+  once the credential reference commits; earlier releases expose incompatible
+  settings or client-event surfaces.
 - **`@deepseek-ai/dsh-llm` is deliberately not a dependency.** Every breaking
   change that forced v0.4.3, v0.4.4, and v0.4.5 came through it. If a change
   here reaches for it, that is a signal the plugin is growing back into an
@@ -54,10 +55,17 @@ approval — that is the whole of what ADR-0002 decided.
   are read back and compared in `storeRawOAuthToken()` so an upstream format
   change fails loudly instead of leaving a credential that authenticates
   nothing. Keep that check.
-- In `0.1.5-rc.1`, `@deepseek-ai/dsh-client-runtime` is unavailable. `slots`
+- In `0.1.7-rc.1`, `@deepseek-ai/dsh-client-runtime` is unavailable. `slots`
   comes from `@deepseek-ai/dsh-client-ui-renderer` and `sessions` from
   `@deepseek-ai/dsh-api-session-controller`; list only installed package names
   in `dsh.client.inject`.
+- In `0.1.7-rc.1`, Settings projects `.volatile()` Config fields through the
+  active profile patch. Read Config references directly, listen for
+  `loader/volatile-update` only when registration facts must be refreshed, and
+  use `settings.configure({ auto: false }, ctx.fiber)` only to suppress the
+  generated form for this plugin's dedicated page. `settings.installSection()`
+  no longer exists. Browser calls to Host `webServer` routes go through the
+  API gateway (`/api/<host-route>`); host registrations themselves omit `/api`.
 - Services are resolved dynamically (`ctx.get`, `ctx.inject`), never through a
   static service inject. Activation happens before the credential plane mounts,
   so any credential read or write must be scoped to `ctx.inject(['credentials'])`
@@ -315,7 +323,7 @@ grep '^  id:' $PLUGIN/lib/client.js
 node --input-type=module << 'EOF'
 import { createRequire } from 'module'
 const req = createRequire(process.env.PLUGIN + '/lib/index.js')
-for (const dep of ['undici', 'eventsource-parser', '@deepseek-ai/schemastery']) {
+for (const dep of ['undici', '@deepseek-ai/cosmokit', '@deepseek-ai/schemastery']) {
   try { req(dep + '/package.json'); console.log('OK', dep) }
   catch(e) { console.log('FAIL', dep, e.message.split('\n')[0]) }
 }

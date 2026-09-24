@@ -9,21 +9,20 @@
  * request. See `docs/adr/0002-narrow-to-credential-provider.md`.
  */
 function apply(ctx, config) {
-  let current = () => config;
   let lastRaw;
   let lastGood;
   const options = () => {
-    const raw = current();
+    const raw = config.oauthTokenEnv.get();
     if (raw === lastRaw && lastGood !== void 0) return lastGood;
     try {
-      const next = resolveAdapterOptions(raw);
+      const next = resolveAdapterOptions({ oauthTokenEnv: raw });
       lastRaw = raw;
       lastGood = next;
       return next;
     } catch (error) {
       if (lastGood === void 0) throw error;
       lastRaw = raw;
-      ctx.logger.error(`${name}: keeping the last good configuration after an invalid settings section`);
+      ctx.logger.error(`${name}: keeping the last good configuration after an invalid credential reference`);
       ctx.logger.error(error);
       return lastGood;
     }
@@ -113,21 +112,14 @@ function apply(ctx, config) {
     }, `${name}: adopt an existing token`);
   });
 
-  // dsh-settings owns the optional-service lifecycle. Keeping the registration
-  // inside this scope preserves the composition config when a settings provider
-  // is absent or later detaches.
+  // dsh-settings owns optional presentation policy. The Loader owns this
+  // plugin's volatile Config, so the device-flow controller reads its reference
+  // directly and stays usable in compositions without a settings service.
   ctx.inject(["settings"], (settingsCtx) => {
-    settingsCtx.settings.installSection(ctx, NS, Config, config, {
-      setSource: (source) => {
-        current = source;
-      },
-      onChange: () => {
-        // Options are otherwise memoized by the settings snapshot identity.
-        // Re-read them on every committed settings update so invalid config
-        // retains the last known-good resolution through the existing guard.
-        void options();
-      }
-    });
+    settingsCtx.effect(
+      () => settingsCtx.settings.configure({ auto: false }, ctx.fiber),
+      `${name}: custom settings page`,
+    );
   });
 
   // ── shared OAuth controller (commands + Web settings page) ────────────────
