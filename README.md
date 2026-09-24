@@ -121,7 +121,26 @@ export GITHUB_COPILOT_OAUTH_TOKEN=<your-github-oauth-token>
 
 ## Selecting a model
 
-Signing in publishes the credential; it does not pick a model. After signing in, open **Settings → Models**, add the **`github-copilot`** provider, and choose a model there.
+Signing in publishes the credential; it does not add a model provider by
+itself. The harness's pi-ai route ships `github-copilot` in its installed
+catalog, but that route mounts **dormant** — with an empty provider list —
+until you explicitly add it once:
+
+1. Open **Settings → Models** (a different page from this plugin's own
+   **Settings → GitHub Copilot** sign-in page).
+2. Choose **Add provider**, then pick **`github-copilot`** from the catalog
+   list. It is a built-in pi-ai catalog entry, so no endpoint or API key
+   field is needed — the plugin's stored credential covers that.
+3. Save. The harness performs the Copilot token exchange and discovers your
+   account's available models the first time the route is used or its
+   catalog is requested; this can take a few seconds.
+4. Reopen the model selector in the chat input box — the GitHub Copilot
+   models now appear there.
+
+Until step 2 is done, the chat input's model selector shows **no** GitHub
+Copilot models at all, regardless of sign-in state; `/copilot-status` still
+reports `authenticated` because that reflects the stored credential, not
+whether a model route was added.
 
 ## Upgrading from 0.4.x
 
@@ -183,6 +202,13 @@ Your egress IP is restricted. Export `HTTPS_PROXY` pointing to a proxy that exit
 
 **`/copilot-login` times out or reports a network error**
 Transient network issue during device-code polling. Run `/copilot-login` again to get a fresh code (the old one is invalidated automatically).
+
+**Signed in (`/copilot-status` shows authenticated), but the chat model selector shows no GitHub Copilot models at all**
+Signing in only publishes the credential; it does not add a model route by
+itself. Open **Settings → Models → Add provider** and add **`github-copilot`**
+from the catalog list (see [Selecting a model](#selecting-a-model)). Until
+that provider is added, the harness's `llm-pi-ai` route stays dormant with an
+empty provider list and offers no models, even though sign-in succeeded.
 
 **`configurable provider "github-copilot" is already declared`**
 This plugin registers no provider of its own — it publishes a credential for the harness's `github-copilot` provider. If no models appear, confirm you signed in (`/copilot-status`) and that the `github-copilot` provider is added under **Settings → Models**. Verify that your `cordis.patch.yml` uses `id: llm-github-copilot` and `name: '@lujianjun19/dsh-llm-github-copilot'`.

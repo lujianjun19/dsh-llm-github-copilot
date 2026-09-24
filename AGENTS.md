@@ -64,8 +64,19 @@ approval — that is the whole of what ADR-0002 decided.
   `loader/volatile-update` only when registration facts must be refreshed, and
   use `settings.configure({ auto: false }, ctx.fiber)` only to suppress the
   generated form for this plugin's dedicated page. `settings.installSection()`
-  no longer exists. Browser calls to Host `webServer` routes go through the
-  API gateway (`/api/<host-route>`); host registrations themselves omit `/api`.
+  no longer exists.
+- `ctx.webServer.register()` is a raw, unauthenticated Node HTTP route: it is
+  not reachable through the browser's shared `/api` channel, and nothing
+  applies the Host/Origin fence or browser-session check to it. A
+  browser-facing REST endpoint must instead use
+  `ctx.connection.fetch.register({ path, methods, requestBody, fetch })`, whose
+  `path` is a literal absolute path under `/api` (e.g.
+  `/api/github-copilot-auth/status`) and whose `fetch: (request: Request) =>
+  Promise<Response>` handler runs only after Connection's trust and
+  authentication policy has already passed. `ctx.connection` comes from
+  `@deepseek-ai/dsh-client-connection`; inject it dynamically
+  (`ctx.inject(['connection'], ...)`), since it is absent outside the Web
+  profile.
 - Services are resolved dynamically (`ctx.get`, `ctx.inject`), never through a
   static service inject. Activation happens before the credential plane mounts,
   so any credential read or write must be scoped to `ctx.inject(['credentials'])`

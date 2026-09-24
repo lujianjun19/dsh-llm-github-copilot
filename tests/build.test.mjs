@@ -96,6 +96,16 @@ test('Host uses the 0.1.7 volatile configuration and settings-presentation APIs'
   assert.doesNotMatch(apply, /installSection/)
 })
 
+test('the Web OAuth routes use the authenticated shared /api channel, not raw webServer', async () => {
+  const apply = await readFile(join(root, 'src', 'host', '12-apply.js'), 'utf8')
+  assert.match(apply, /ctx\.inject\(\["connection"\], \(cctx\) => \{/)
+  assert.match(apply, /cctx\.connection\.fetch\.register\(\{\s*\n\s*path: "\/api\/github-copilot-auth\/status",\s*\n\s*methods: \["GET"\]/)
+  assert.match(apply, /path: "\/api\/github-copilot-auth\/login",\s*\n\s*methods: \["POST"\]/)
+  assert.match(apply, /path: "\/api\/github-copilot-auth\/logout",\s*\n\s*methods: \["POST"\]/)
+  assert.doesNotMatch(apply, /ctx\.inject\(\["webServer"\]/)
+  assert.doesNotMatch(apply, /wctx\.webServer\.register/)
+})
+
 test('Web client uses the API gateway and observes credential-reference commits', async () => {
   const api = await readFile(join(root, 'src', 'client', '01-i18n.js'), 'utf8')
   const source = await readFile(join(root, 'src', 'client', '10-apply.js'), 'utf8')

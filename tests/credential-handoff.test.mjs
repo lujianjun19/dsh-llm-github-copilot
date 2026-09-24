@@ -133,3 +133,49 @@ test('apply configures the 0.1.7 Settings presentation without the removed insta
   apply(ctx, Config({}))
   assert.deepEqual(calls, [{ policy: { auto: false }, owner: fiber }])
 })
+
+test('apply registers the Web OAuth routes on the authenticated shared /api channel, not raw webServer', async () => {
+  const registered = []
+  const connection = {
+    fetch: {
+      register: (route) => {
+        registered.push(route)
+        return async () => { route.disposed = true }
+      },
+    },
+  }
+  const ctx = {
+    fiber: {},
+    logger: { error() {}, info() {}, warn() {} },
+    get: () => undefined,
+    on() {},
+    effect(setup) { return setup() },
+    inject(dependencies, callback) {
+      if (dependencies.length === 1 && dependencies[0] === 'connection') {
+        callback({ effect: setup => setup(), connection })
+      }
+      // A composition without 'webServer' registered must not be required:
+      // the plugin must never call ctx.inject(['webServer'], ...) any more.
+      if (dependencies.length === 1 && dependencies[0] === 'webServer') {
+        throw new Error('apply() must not inject webServer for browser-facing routes')
+      }
+    },
+  }
+  apply(ctx, Config({}))
+  assert.deepEqual(registered.map(route => ({ path: route.path, methods: route.methods, requestBody: route.requestBody })), [
+    { path: '/api/github-copilot-auth/status', methods: ['GET'], requestBody: 'buffered' },
+    { path: '/api/github-copilot-auth/login', methods: ['POST'], requestBody: 'buffered' },
+    { path: '/api/github-copilot-auth/logout', methods: ['POST'], requestBody: 'buffered' },
+  ])
+  for (const route of registered) assert.equal(typeof route.fetch, 'function')
+  // The status route resolves without a credentials service; its Fetch handler
+  // returns a real Response with the JSON shape the client expects.
+  const response = await registered[0].fetch(new Request('http://host/api/github-copilot-auth/status'))
+  assert.ok(response instanceof Response)
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('cache-control'), 'no-store')
+  const body = await response.json()
+  assert.equal(body.ok, true)
+  assert.equal(body.value.authenticated, false)
+  assert.equal(body.value.provider, PI_AI_PROVIDER)
+})

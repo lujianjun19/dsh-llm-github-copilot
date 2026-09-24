@@ -120,7 +120,22 @@ export GITHUB_COPILOT_OAUTH_TOKEN=<your-github-oauth-token>
 
 ## 选择模型
 
-登录只发布凭据，不会替你选模型。登录后请打开 **设置 → 模型**，添加 **`github-copilot`** 提供方，并在其中选择模型。
+登录只发布凭据，本身**不会**添加模型提供方。Harness 的 pi-ai 路由内置目录里
+包含 `github-copilot`，但该路由默认以“休眠”状态挂载——提供方列表为空——
+直到你手动添加一次：
+
+1. 打开 **设置 → 模型**（这与本插件自己的 **设置 → GitHub Copilot** 登录页
+   是不同的页面）。
+2. 选择**添加提供方**，从内置目录列表中选 **`github-copilot`**。它是
+   pi-ai 自带的目录条目，不需要填写 endpoint 或 API key——本插件保存的
+   凭据已经覆盖这一步。
+3. 保存。Harness 会在该路由首次被使用或首次请求其目录时执行 Copilot
+   token 交换，并发现你账号可用的模型；这个过程可能需要几秒钟。
+4. 重新打开聊天输入框的模型选择器——GitHub Copilot 的模型这时才会出现。
+
+在完成第 2 步之前，不论是否已登录，聊天输入框的模型选择器都**不会**
+出现任何 GitHub Copilot 模型；`/copilot-status` 显示 `authenticated`
+只代表凭据已保存，与是否添加了模型路由无关。
 
 ## 从 0.4.x 升级
 
@@ -180,6 +195,12 @@ dsh web
 
 **`/copilot-login` 报网络错误或一直等待**
 设备码轮询偶发网络抖动；重新运行一次 `/copilot-login` 拿新口令即可（旧口令随之失效）。
+
+**已登录（`/copilot-status` 显示 authenticated），但聊天模型选择器里完全没有 GitHub Copilot 模型**
+登录只发布凭据，本身不会添加模型路由。请打开 **设置 → 模型 → 添加提供方**，
+从内置目录列表中添加 **`github-copilot`**（见[选择模型](#选择模型)）。在添加
+之前，Harness 的 `llm-pi-ai` 路由会一直处于提供方列表为空的“休眠”状态，
+即使登录成功也不会提供任何模型。
 
 **启动时报 `configurable provider "github-copilot" is already declared`**
 本插件不再注册自己的提供方——它只为 Harness 内置的 `github-copilot` 提供方发布凭据。如果看不到模型，请确认已登录（`/copilot-status`），并已在 **设置 → 模型** 中添加 `github-copilot` 提供方。同时确认 `cordis.patch.yml` 里的 `id`/`name` 与本文档一致。

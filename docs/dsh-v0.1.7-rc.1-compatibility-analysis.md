@@ -13,9 +13,29 @@ back into an LLM adapter. See [ADR-0002](adr/0002-narrow-to-credential-provider.
 
 > **Historical finding.** This report records the pre-migration `0.4.6` source
 > state. The follow-on `fix/dsh-0.1.7-compatibility` change implements the
-> listed peer-range and Settings migrations, and local Web validation additionally
-> moved browser calls to the target API-gateway prefix (`/api/<host-route>`).
-> Retain this report as the evidence for why that focused migration was made.
+> listed peer-range and Settings migrations. A live-browser regression found
+> afterward (documented below) required a further correction: the Web OAuth
+> routes moved off `ctx.webServer.register()` (a raw, unauthenticated route
+> unreachable through the browser's shared `/api` channel) onto
+> `ctx.connection.fetch.register()`, the harness's actual mechanism for an
+> authenticated browser-facing REST endpoint under `/api`. Retain this report
+> as the evidence for why that migration, and its correction, were made.
+>
+> **Post-migration correction — the `/api` route mechanism.** The first pass of
+> this migration only changed the *client's* fetch URL to `/api/<path>`,
+> leaving the *Host* registered on `ctx.webServer` at the unprefixed `<path>`.
+> `ctx.webServer.register()` and the shared `/api` channel are two entirely
+> separate route tables — a request under `/api/*` is dispatched only through
+> `ctx.connection`'s own `fetchRoutes` map (populated exclusively by
+> `ctx.connection.fetch.register({ path: '/api/...', methods, requestBody,
+> fetch })`, a Web-standard `Request -> Promise<Response>` handler) — so the
+> mismatch surfaced as a live 404 on both `GET .../status` and `POST
+> .../login` once a genuinely fresh Host process was tested end to end from a
+> real browser. See `packages/client/connection/src/rpc-host.ts` in the
+> Harness checkout for `createSharedFetchHandler()`, and
+> `packages/api/session-controller/src/media-references.ts` /
+> `packages/client/file-upload/src/index.ts` for other Harness plugins using
+> the same registration idiom.
 
 ## Verdict
 
