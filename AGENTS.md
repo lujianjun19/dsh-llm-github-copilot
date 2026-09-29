@@ -40,7 +40,8 @@ approval — that is the whole of what ADR-0002 decided.
 
 ## DeepSeek Harness version dependency
 
-- This plugin requires **`@deepseek-ai/dsh` `0.1.7-rc.1` or newer**, with
+- This plugin supports **`@deepseek-ai/dsh` `0.1.7-rc.1` through
+  `0.1.7-rc.2`, plus `0.2.0-rc.1` from npm's `next` channel**, with
   `@deepseek-ai/cordis` `^4.0.4`. See `peerDependencies` in `package.json`.
   The floor includes Loader-owned volatile configuration and the Web client's
   `credentials/reference-updated` event, which closes the device-flow dialog
