@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
+## [0.4.9] - 2026-09-29
+
+### Changed
+
+- **DeepSeek Harness `0.2.0-rc.1` compatibility.** The plugin now accepts the
+  `0.1.7` release-candidate line and npm's `next` `0.2.0-rc.1` release line;
+  its development dependencies and lockfile test against `0.2.0-rc.1` while
+  retaining the `@deepseek-ai/cordis ^4.0.4` requirement. The README and agent
+  contract now identify both supported Harness lines.
+
 ## [0.4.8] - 2026-09-24
 
 ### Fixed
