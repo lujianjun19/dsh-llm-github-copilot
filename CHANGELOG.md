@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
+## [0.4.10] - 2026-10-16
+
+### Fixed
+
+- **Adopting an environment-supplied token no longer logs a false failure.**
+  When `GITHUB_COPILOT_OAUTH_TOKEN` came from the shell that launched `dsh`,
+  Harness releases before 0.2.1 reject `credentials.set()` for that read-only
+  reference, so adoption warned "could not adopt an existing token" even though
+  the `llm-pi-ai/github-copilot` grant had already been written and verified.
+  The reference write is now skipped when `credentials.describe()` reports it
+  unwritable.
+
+### Changed
+
+- **DeepSeek Harness `0.2.0-rc.2` compatibility.** `0.2.0-rc.2` (npm's
+  `latest`/`next`) is now the tested baseline: development dependencies and
+  the lockfile resolve it, and the READMEs and agent contract list `0.2.0-rc.1`
+  through `0.2.0-rc.2` as supported. Peer ranges are unchanged.
+- Removed the unused `@deepseek-ai/dsh-llm`, `dsh-attachment`,
+  `dsh-attachment-local`, and `dsh-timeout` development dependencies.
+- ADR-0002 records the re-check against `0.2.0-rc.2`: no shipped generic
+  sign-in surface exists yet, and the grant format the plugin seeds is
+  unchanged.
+
 ## [0.4.9] - 2026-09-29
 
 ### Changed
