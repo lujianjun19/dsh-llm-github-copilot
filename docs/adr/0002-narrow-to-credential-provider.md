@@ -42,3 +42,18 @@ the credential provider until a shipped generic surface can start and render
 the `github-copilot` flow. Re-open this ADR again when that surface ships; at
 that point the device-flow page, endpoints, and slash commands should be
 removed rather than maintained in parallel.
+
+## Compatibility addendum — `dsh-v0.2.0-rc.2`
+
+The re-open condition was checked again against `dsh-v0.2.0-rc.2` (npm
+`latest`/`next`) and `dsh-v0.2.1-alpha.4`. Neither ships a generic Web or Remote
+consumer of `authorization.begin()`: the only caller is still the DeepSeek-account
+provider, so no default surface can start the native `github-copilot` flow. This
+plugin remains the credential provider.
+
+The handoff contract is unchanged in both releases. `llm-pi-ai` still addresses
+the record as `llm-pi-ai/github-copilot`, and pi-ai's
+`auth/oauth/github-copilot.js` is byte-identical between `0.87.1` (shipped by
+`0.2.0-rc.2`) and `1.1.0` (shipped by `0.2.1-alpha.4`), so the
+`{ type: 'oauth', refresh, access, expires }` grant this plugin seeds is still
+the shape the route refreshes.

@@ -11,7 +11,7 @@ The harness already ships a `github-copilot` provider that can serve those model
 ## Requirements
 
 - **DeepSeek Harness `0.1.7-rc.1` through `0.1.7-rc.2`, or
-  `0.2.0-rc.1` from npm's `next` channel**, with its bundled
+  `0.2.0-rc.1` through `0.2.0-rc.2` (npm's `latest`/`next`)**, with its bundled
   `@deepseek-ai/dsh-llm-pi-ai` route (mounted by default). This plugin writes
   the credential that route reads. This baseline uses Loader-owned volatile
   configuration and forwards credential reference commits to the Web client, so
