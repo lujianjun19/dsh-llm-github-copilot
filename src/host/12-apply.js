@@ -65,6 +65,10 @@ function apply(ctx, config) {
    * The write is read back and the token compared, because the record's format
    * belongs to another plugin: a shape it stops accepting must fail loudly here
    * rather than leave a credential that silently authenticates nothing.
+   *
+   * The reference write is skipped when the launching environment supplies the
+   * reference read-only: Harness releases before 0.2.1 reject that `set`, and
+   * the environment already resolves the reference, so the grant alone suffices.
    */
   const storeRawOAuthToken = async (token) => {
     const credentials = ctx.get("credentials");
@@ -78,7 +82,8 @@ function apply(ctx, config) {
         + " the consuming plugin may have changed its grant format",
       );
     }
-    await credentials.set(options().oauthTokenEnv, token);
+    const ref = options().oauthTokenEnv;
+    if ((await credentials.describe(ref)).writable) await credentials.set(ref, token);
   };
 
   /**

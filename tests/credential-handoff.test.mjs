@@ -179,3 +179,55 @@ test('apply registers the Web OAuth routes on the authenticated shared /api chan
   assert.equal(body.value.authenticated, false)
   assert.equal(body.value.provider, PI_AI_PROVIDER)
 })
+
+// ── adopting an environment-supplied token ───────────────────────────────────
+
+/**
+ * A credentials service shaped like `credentials-local` before 0.2.1: a
+ * reference the launching environment supplies is read-only, `describe`
+ * reports it unwritable, and `set` rejects it.
+ */
+function readOnlyEnvCredentials(ref, value) {
+  const records = new Map()
+  const calls = { set: 0 }
+  return {
+    calls,
+    records,
+    readRecord: async key => records.get(String(key)),
+    modifyRecord: async (key, update) => { records.set(String(key), await update(records.get(String(key)))) },
+    resolve: async r => r === ref ? { value } : undefined,
+    describe: async r => r === ref
+      ? { configured: true, source: 'env', writable: false }
+      : { configured: false, writable: true },
+    set: async (r) => {
+      calls.set += 1
+      throw new Error(`credentials-local: "${r}" is supplied read-only by the launching environment`)
+    },
+  }
+}
+
+test('an environment-supplied token is adopted into the grant without writing the read-only reference', async () => {
+  const credentials = readOnlyEnvCredentials(DEFAULT_OAUTH_TOKEN_ENV, TOKEN)
+  const logs = { info: [], warn: [] }
+  let adoption
+  const ctx = {
+    fiber: {},
+    logger: { error() {}, info: m => logs.info.push(m), warn: m => logs.warn.push(m) },
+    get: name => name === 'credentials' ? credentials : undefined,
+    on() {},
+    effect(setup) { return setup() },
+    inject(dependencies, callback) {
+      if (dependencies.length === 1 && dependencies[0] === 'credentials') {
+        callback({ effect: (setup) => { adoption = setup() } })
+      }
+    },
+  }
+  apply(ctx, Config({}))
+  assert.equal(typeof adoption, 'function')
+  // The adoption is fire-and-forget; let its awaits settle.
+  for (let i = 0; i < 20; i++) await new Promise(resolve => setImmediate(resolve))
+  assert.equal(grantToken(credentials.records.get('llm-pi-ai/github-copilot')), TOKEN)
+  assert.equal(credentials.calls.set, 0)
+  assert.deepEqual(logs.warn, [])
+  assert.equal(logs.info.length, 1)
+})
