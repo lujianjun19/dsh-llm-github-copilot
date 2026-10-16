@@ -81,7 +81,7 @@ test('manifest exposes both Host and Web client release faces', async () => {
   }
   for (const [dependency, range] of Object.entries(manifest.devDependencies)) {
     if (!dependency.startsWith('@deepseek-ai/dsh-')) continue
-    assert.equal(range, '^0.2.0-rc.1', `${dependency} development range`)
+    assert.equal(range, '^0.2.0-rc.2', `${dependency} development range`)
   }
   assert.equal(manifest.peerDependencies['@deepseek-ai/cordis'], '^4.0.4')
   assert.equal(manifest.devDependencies['@deepseek-ai/cordis'], '^4.0.4')
