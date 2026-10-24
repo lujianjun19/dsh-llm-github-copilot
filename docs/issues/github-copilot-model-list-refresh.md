@@ -1,5 +1,11 @@
 # GitHub Copilot 登出后模型列表未随认证状态更新
 
+> **适用范围补充**：下文原始链路记录针对 Harness `0.1.5-rc.1`。
+> README 同步核查时检查了 npm 发布的 `@deepseek-ai/dsh-llm-pi-ai@0.2.0-rc.2`：
+> `PiAiAdapter.listModels()` 仍直接返回配置目录中的模型，不读取 grant 或
+> `availableModelIds`。因此，在本插件已验证的 `0.2.0-rc.2` 基线上也不能把
+> 选择器内容视为账号权限校验，或承诺登出会立即隐藏模型；此处不对更高版本作结论。
+
 ## 问题
 
 用户通过本插件登录 GitHub Copilot 后，输入框下方的模型选择器会显示

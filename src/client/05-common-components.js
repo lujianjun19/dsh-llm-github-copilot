@@ -2,8 +2,9 @@
       useLocaleRevision();
       const authenticated = status?.authenticated === true;
       const pending = status?.state === "pending";
-      const label = authenticated ? text("signedIn") : pending ? text("pending") : text("signedOut");
-      const state = authenticated ? "done" : pending ? "ongoing" : "error";
+      const remaining = status?.credentialRemaining === true;
+      const label = remaining ? text("credentialRemaining") : authenticated ? text("signedIn") : pending ? text("pending") : text("signedOut");
+      const state = remaining ? "warning" : authenticated ? "done" : pending ? "ongoing" : "error";
       return jsxs("span", { style: css.status, children: [jsx(StateDot, { state }), label] });
     }
 
