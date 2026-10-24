@@ -176,9 +176,33 @@ base bundle 仍挂载 `dsh-authorization`，`llm-pi-ai` 也仍注册各 provider
   正常设备码登录后的状态更新、确认退出与普通 token 清除，以及页面无未捕获 JS 错误。
   旧版只读环境引用与新版文件覆盖后回退的两条链路均使用实际 Harness 验证。
 
-**仍需人工授权的边界：**浏览器测试只在外部 GitHub HTTP 边界使用 fixture，
-不访问真实 GitHub 设备授权端点，也不调用 Copilot 推理。真实账号授权及一次实际模型请求
-不能由这些自动化测试代替；完成前不应声称已经做过真实账号端到端验证。
+**自动化测试的边界：**浏览器测试只在外部 GitHub HTTP 边界使用 fixture，
+不访问真实 GitHub 设备授权端点，也不调用 Copilot 推理。真实账号验收另见下节，
+不能把它与可重复、无需账号的 CI 测试混为一谈。
 运行测试的说明和可选参数见 `docs/WORKFLOW.md`。
 
 本次没有改变 grant 格式，没有新增模型适配器，也没有把模型目录职责移回插件。
+
+## 真实账号验收（2026-10-24，已完成）
+
+用户手动完成 GitHub 设备流授权后，在独立临时 `DSH_HOME` 中完成以下检查：
+
+1. Web 插件的真实设备流写入凭据；状态返回 `authenticated: true`，没有
+   `credentialRemaining` 提示。此轮没有 GitHub HTTP fixture，也未从现有 profile 复制 token。
+2. 同一个临时 Harness home 下，使用 npm 发布的 **Harness `0.2.1-rc.3`**、内置
+   **`github-copilot`** 路由和 **`gpt-5.4-nano`** 模型执行一次成功的最小请求：
+   任务仅要求回复固定文本，工作目录为空的临时目录，自动重试关闭，输出预算为 256 token。
+   模型返回 **`COPILOT_AUTH_OK`**，headless 进程退出码为 **0**。
+3. headless profile 未安装本插件，直接消费 Web 插件写入的 grant。由于新版 headless
+   默认禁用托管凭据服务，测试仅在临时 headless patch 中重新启用 `credentials`，
+   配置 `llm-pi-ai.providers.github-copilot` 和默认模型。
+   模型推理档位使用 `minimal`；最初的 `off` 配置被 Harness 参数校验拒绝，未进入模型请求。
+4. 请求后 Web 状态读到下游记录的 `modelCount: 23`，确认 consuming route 已完成
+   token 交换并回写账号模型信息。**23 只是本次账号的实测值，不是所有账号的模型数量保证。**
+5. 通过插件真实退出端点删除临时 grant/reference，退出结果及再次查询的状态均为
+   `authenticated: false`。随后停止测试进程并删除整个临时 home、凭据、日志及启动状态文件。
+   未修改用户现有 profile；本地清理不等于撤销 GitHub 账号上的 App 授权。
+
+这补齐了 `0.2.1-rc.3` 的真实设备流 → 凭据交接 → Copilot token 交换 → 推理 → 本地退出链路。
+真实账号请求仅覆盖上述一个模型和这一版 Harness，不代表其他模型或 `0.2.1-rc.2` 也做过
+真实账号推理验证。没有记录 token 值，没有发布或推送 tag。
