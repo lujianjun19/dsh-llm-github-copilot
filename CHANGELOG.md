@@ -2,6 +2,43 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
+## [0.4.11] - 2026-10-24
+
+### Fixed
+
+- **Sign-out now reports credentials that remain outside the local grant.**
+  Read-only references are no longer passed to `unset()`. On newer Harness
+  releases, deleting a file override can reveal an environment or `.env`
+  fallback; commands and the English/Chinese Web settings page now explain
+  that the external token must be removed and DSH restarted instead of
+  claiming a complete sign-out. The Web API exposes `credentialRemaining`
+  without exposing the token.
+- Supply the required localized close-button label to the settings page's
+  logout confirmation, and remove the incorrect promise that signing out
+  immediately hides Copilot models.
+
+### Changed
+
+- **DeepSeek Harness `0.2.1-rc.2` and `0.2.1-rc.3` compatibility.** Peer ranges
+  explicitly include this RC line while retaining the previous supported
+  lines. Development dependencies and the lockfile use `0.2.1-rc.3`, Cordis
+  `4.0.5`, and Schemastery `3.18.5`.
+- Synchronize both READMEs with the credential-provider implementation:
+  automatic bundle registration, profile-managed updates, status semantics,
+  token precedence, model-catalog ownership, development and rollback steps.
+  Remove unsupported token-type and model-availability guarantees.
+
+### Added
+
+- Real credential-service regression tests, bilingual client contract tests,
+  and README/manifest synchronization checks (38 tests total).
+- A disposable packed-installation and Chromium smoke test, run by CI against
+  Harness `0.2.0-rc.2`, `0.2.1-rc.2`, and `0.2.1-rc.3`, with explicit pnpm
+  provisioning and fixture-only GitHub responses.
+- A version-scoped compatibility assessment recording a user-authorized live
+  device flow, built-in Copilot route inference, and local logout on Harness
+  `0.2.1-rc.3`. Temporary credentials were cleared after verification.
+
 ## [0.4.10] - 2026-10-16
 
 ### Fixed
