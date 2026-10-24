@@ -100,7 +100,7 @@ npm run test:harness -- 0.2.1-rc.3
 
 需要 Node.js ≥ 24、PATH 中的 pnpm ≥ 9 和 Chromium；Linux CI 使用
 `npx playwright install --with-deps chromium` 安装系统依赖。
-`.github/workflows/ci.yml` 按这三个精确版本运行矩阵。
+`.github/workflows/ci.yml` 显式安装 pnpm 11，并按这三个精确版本运行矩阵。
 
 脚本下载对应的完整 Harness（显式启用其 peer 安装），通过 `npm pack` 生成本地
 插件包，再用 `dsh plugin add` 装入独立的临时 `DSH_HOME`。随后验证 bundle、运行时依赖、
