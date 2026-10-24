@@ -4,218 +4,210 @@ English | [中文](README.zh.md)
 
 GitHub Copilot sign-in for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
 
-Sign in with your GitHub account and use every Copilot model your plan includes — GPT-5 family, Claude, Gemini, and more — inside DeepSeek Harness.
-
-The harness already ships a `github-copilot` provider that can serve those models; what it cannot do is sign you in. This plugin fills exactly that gap: it runs the GitHub device flow and publishes the credential that provider authenticates from. Requests, model discovery, images, and streaming are all handled by the harness route, not here. See [`docs/adr/0002-narrow-to-credential-provider.md`](docs/adr/0002-narrow-to-credential-provider.md).
+This plugin provides a GitHub OAuth device-flow page and slash commands, then writes the credential used by the Harness's built-in `github-copilot` provider. It registers **no LLM adapter** and owns no model catalog: token exchange and refresh, model availability, requests, images, and streaming belong to the Harness's `@deepseek-ai/dsh-llm-pi-ai` route. Available models depend on that route's catalog and your account's access, not just your Copilot plan. See [ADR-0002](docs/adr/0002-narrow-to-credential-provider.md).
 
 ## Requirements
 
-- **DeepSeek Harness `0.1.7-rc.1` through `0.1.7-rc.2`, or
-  `0.2.0-rc.1` through `0.2.0-rc.2` (npm's `latest`/`next`)**, with its bundled
-  `@deepseek-ai/dsh-llm-pi-ai` route (mounted by default). This plugin writes
-  the credential that route reads. This baseline uses Loader-owned volatile
-  configuration and forwards credential reference commits to the Web client, so
-  the sign-in dialog closes immediately once the device flow completes.
-- A GitHub account with a Copilot subscription.
-- Node.js ≥ 24.
+- **Supported Harness releases:** `0.1.7-rc.1` through `0.1.7-rc.2`, `0.2.0-rc.1` through `0.2.0-rc.2`, and `0.2.1-rc.2` through `0.2.1-rc.3`, with `@deepseek-ai/cordis` `^4.0.4`. The development baseline is `0.2.1-rc.3`.
+- **Declared Harness peer range:** `^0.1.7-rc.1 || ^0.2.0-rc.1 || ^0.2.1-rc.2` (see [`package.json`](package.json)). npm's moving `latest`/`next` tags are not a support guarantee. See the [0.2.1 compatibility assessment](docs/dsh-v0.2.1-rc.3-compatibility-analysis.md) for validation scope.
+- The Harness's bundled `@deepseek-ai/dsh-llm-pi-ai` route and a credentials service such as `dsh-credentials-local`. The default Web profile supplies these; custom compositions must mount them.
+- A GitHub account with access to Copilot.
+- Node.js ≥ 24; pnpm ≥ 9 on `PATH` for `dsh plugin` commands.
 
 ## Install
+
+The commands below target the `web` profile. Its default directory is `~/.dsh/profiles/web`; if `DSH_HOME` is set, it is `$DSH_HOME/profiles/web`.
 
 ### From npm (recommended)
 
 ```sh
-dsh plugin --profile web add @lujianjun19/dsh-llm-github-copilot
+dsh plugin --profile web add @lujianjun19/dsh-llm-github-copilot -w
 ```
 
 ### From GitHub
 
 ```sh
-dsh plugin --profile web add github:lujianjun19/dsh-llm-github-copilot
+dsh plugin --profile web add github:lujianjun19/dsh-llm-github-copilot -w
 ```
 
-pnpm 10 and newer block git dependency build scripts by default. If installation asks you to approve the package build, add the exact package key it reports to the profile's `pnpm-workspace.yaml`:
+This installs the repository's default branch, which may contain unreleased changes. If pnpm asks for build approval, copy the **exact key it reports** into `allowBuilds` in the profile's `pnpm-workspace.yaml`, then repeat the command. Do not guess the key from the repository name.
 
-```yaml
-allowBuilds:
-  dsh-llm-github-copilot: true
-```
+`dsh plugin` registers this package in the profile's `dsh.profile.bundles` and loads its bundled `cordis.patch.yml`. **Do not add another `insert` entry for this plugin to the profile patch.** If an older installation has a manual registration, remove that duplicate when using the bundle installation.
 
-Then repeat the install command.
-
-After installation, register the plugin in the profile's `cordis.patch.yml`:
-
-```yaml
-- insert:
-    - id: llm-github-copilot
-      name: '@lujianjun19/dsh-llm-github-copilot'
-```
-
-Restart DSH to activate:
+Stop any running instance, then start the profile again:
 
 ```sh
 dsh web
 ```
+
+Hard-refresh an already open browser tab after updating the plugin's client bundle.
 
 ## Update
 
-The DSH profile uses pnpm internally, and its lockfile pins the exact installed version. Re-running `dsh plugin add` alone may not pick up a newer release. Use either of the following commands from any directory:
+Use the Harness package manager so the profile's pnpm lockfile and bundle list stay in sync:
 
 ```sh
-# Using npm (simplest — no extra flags needed)
-npm install --prefix ~/.dsh/profiles/web @lujianjun19/dsh-llm-github-copilot@latest
-
-# Using pnpm
-pnpm add --dir ~/.dsh/profiles/web @lujianjun19/dsh-llm-github-copilot@latest --no-frozen-lockfile
+dsh plugin --profile web update @lujianjun19/dsh-llm-github-copilot --latest -w
 ```
 
-Then restart DSH:
+For a specific release, replace `X.Y.Z` with its version:
 
 ```sh
-dsh web
+dsh plugin --profile web add @lujianjun19/dsh-llm-github-copilot@X.Y.Z -w
 ```
 
-To confirm the installed version, open **Settings → GitHub Copilot** in the Harness browser UI — the version number is shown at the bottom of the panel.
+A profile's pnpm `minimumReleaseAge` policy can delay newly published versions. If the installed version is older than expected, check that policy and, if appropriate, allow only the intended package/version through `minimumReleaseAgeExclude`, then install the exact version. Do not assume `@latest` selected the release you wanted, or mix `npm install` into a pnpm-managed profile.
+
+Restart DSH and hard-refresh the browser. Confirm the installed version at the bottom of **Settings → GitHub Copilot**, or run:
+
+```sh
+dsh plugin --profile web list @lujianjun19/dsh-llm-github-copilot
+```
 
 ## Sign in
 
-Run the login command inside the Harness chat:
+Open **Settings → GitHub Copilot** and choose **Sign in**, or run this in a Harness chat:
 
-```
+```text
 /copilot-login
 ```
 
-Follow the instructions — open the verification URL in your browser, enter the displayed code, and authorize the GitHub App. The token is stored automatically once you complete authorization. Run `/copilot-status` to confirm the connection and see the available models.
+Open the displayed GitHub verification URL, enter the device code, and authorize the GitHub App (VS Code). Polling continues on the Host and stores the credential automatically after authorization. The Web sign-in UI updates automatically; the chat-command dialog closes when sign-in is detected.
 
-To sign out:
+Check the stored credential state with:
 
+```text
+/copilot-status
 ```
+
+`authenticated` means a long-lived token is present, **not** that a live API request succeeded. The command reports a model **count** only if the downstream route has recorded `availableModelIds`; it does not fetch or list models. Before the route's first token exchange, that count may be absent.
+
+To remove the local credential:
+
+```text
 /copilot-logout
 ```
 
-You can also set the token directly as an environment variable (useful for CI or headless setups):
+The Web UI asks for confirmation. Sign-out deletes the grant and any writable token reference; it does not revoke the GitHub authorization or remove the configured model provider. If a read-only reference or environment/`.env` fallback still supplies a token, the UI and commands explicitly report that sign-out is incomplete and tell you to remove the external token and restart. The status API exposes `credentialRemaining: true` in this case and never returns the token itself.
+
+### Use an existing OAuth token
+
+You can supply a long-lived GitHub OAuth token instead of using the device flow:
 
 ```sh
-export GITHUB_COPILOT_OAUTH_TOKEN=<your-github-oauth-token>
+export GITHUB_COPILOT_OAUTH_TOKEN='<your-github-oauth-token>'
+dsh web
 ```
 
-**Supported token types:**
+When the credentials service becomes available, the plugin adopts that token into the grant **only if no grant already exists**. An existing grant takes precedence over the environment/reference. On Harness versions where the environment-supplied reference is read-only, adoption writes the grant without attempting to overwrite the environment.
 
-| Prefix | Source |
-|--------|--------|
-| `gho_` | OAuth token (`gh auth login`) |
-| `github_pat_` | Fine-grained PAT (requires **Copilot** permission) |
-| `ghu_` | GitHub App user token (VS Code client) |
+Use a token from a compatible Copilot OAuth flow, not a short-lived Copilot API token. This plugin does not validate token prefixes or guarantee that an arbitrary PAT or `gh auth login` token has Copilot access.
 
-`ghp_` classic PATs are not accepted by the Copilot API.
-
-## Features
-
-**Device-flow sign-in** — no token to create or paste. Run `/copilot-login`, or use the Settings page, and authorize in the browser; the credential is stored automatically.
-
-**Automatic refresh, handled downstream** — the credential carries your long-lived GitHub token. The harness route exchanges it for a short-lived Copilot token, refreshes it, and derives your account's API endpoint (individual, business, or enterprise) on its own.
-
-**Ambient token adoption** — an existing `GITHUB_COPILOT_OAUTH_TOKEN`, whether exported or stored from an earlier version of this plugin, is adopted on start so you are not asked to sign in twice.
-
-**Settings page** — a dedicated **GitHub Copilot** section in the Harness Web settings UI (gear icon → **GitHub Copilot**) for signing in, checking status, and signing out. Models are selected under **Settings → Models**, in the `github-copilot` provider.
-
-**Slash commands** — `/copilot-login`, `/copilot-status`, and `/copilot-logout` for surfaces without the settings UI.
+To sign out of an environment-token setup, remove the variable from the launching environment, restart DSH without it, then run `/copilot-logout`. Otherwise older Harness versions reject clearing the read-only reference; newer versions can clear the file override but still resolve the environment token. It may be adopted again on a later start.
 
 ## Selecting a model
 
-Signing in publishes the credential; it does not add a model provider by
-itself. The harness's pi-ai route ships `github-copilot` in its installed
-catalog, but that route mounts **dormant** — with an empty provider list —
-until you explicitly add it once:
+Signing in publishes a credential; it does **not** add a provider configuration.
 
-1. Open **Settings → Models** (a different page from this plugin's own
-   **Settings → GitHub Copilot** sign-in page).
-2. Choose **Add provider**, then pick **`github-copilot`** from the catalog
-   list. It is a built-in pi-ai catalog entry, so no endpoint or API key
-   field is needed — the plugin's stored credential covers that.
-3. Save. The harness performs the Copilot token exchange and discovers your
-   account's available models the first time the route is used or its
-   catalog is requested; this can take a few seconds.
-4. Reopen the model selector in the chat input box — the GitHub Copilot
-   models now appear there.
+1. Open **Settings → Models**, separate from this plugin's sign-in page.
+2. If it is not already configured, choose **Add provider** and select the built-in **`github-copilot`** entry. No custom endpoint or pasted API key is needed for the stored grant.
+3. Save, then reopen the chat input's model selector and choose a model under `github-copilot`.
+4. Send a request. The Harness route exchanges the long-lived GitHub token for a short-lived Copilot token as needed, refreshes it, and derives the account's endpoint.
 
-Until step 2 is done, the chat input's model selector shows **no** GitHub
-Copilot models at all, regardless of sign-in state; `/copilot-status` still
-reports `authenticated` because that reflects the stored credential, not
-whether a model route was added.
+On the verified Harness baseline, the picker comes from the route's configured catalog. Opening it is **not** proof of an account-specific model discovery or successful authentication, and sign-out may leave catalog entries visible. The plugin neither filters those entries nor adds models absent from the downstream catalog. See the [model-list tracking issue](docs/issues/github-copilot-model-list-refresh.md).
 
-## Upgrading from 0.4.x
-
-Versions up to 0.4.5 registered their own `github-copilot-official` provider. That provider no longer exists. If your settings or sessions name it, switch them to the `github-copilot` provider — the model ids are the same. Your stored credential is adopted automatically; you do not need to sign in again.
+If upgrading from an old adapter-based installation (through `0.4.5`), replace references to the removed `github-copilot-official` provider in settings and sessions with `github-copilot`, selecting a model available in the current catalog. An existing token reference is adopted automatically; no second sign-in is needed if that token is still valid.
 
 ## Configure
 
-The plugin works with no configuration. The only setting is which credential
-reference holds the GitHub OAuth token:
+The plugin works without configuration. Its only option is `oauthTokenEnv`, the credential reference/environment variable used to read an existing token and, when writable, store a copy after sign-in:
 
 ```yaml
 - id: llm-github-copilot
   config:
-    oauthTokenEnv: GITHUB_COPILOT_OAUTH_TOKEN   # credential reference / env var
+    oauthTokenEnv: GITHUB_COPILOT_OAUTH_TOKEN
 ```
 
-Everything about models, endpoints, and request behaviour is configured on the
-harness route under the `llm-pi-ai` profile entry, not here. On Harness
-`0.1.7-rc.1` and newer, live settings are stored in the active profile's
-`cordis.patch.yml`, rather than in a separate `settings.yaml` section.
+Put this **override**, not another `insert`, in the active profile's `cordis.patch.yml`. Live settings use that profile patch, not a separate `settings.yaml` section.
+
+The grant the route actually consumes always lives at `llm-pi-ai/github-copilot`; changing `oauthTokenEnv` does not move it or create a second account/provider. Models, endpoints, and request behaviour are configured under the Harness route's `llm-pi-ai` entry, not here.
 
 ## Develop
 
-Requires Node.js ≥ 24 and npm.
+Requires Node.js ≥ 24 and npm. Work in the repository root; edit `src/host/` and `src/client/`, not generated `lib/` files.
 
 ```sh
-cd /path/to/dsh-llm-github-copilot
+npm ci
 npm run build      # concatenate source fragments → lib/index.js and lib/client.js
-npm test           # build + deterministic artifact, i18n, and metadata tests
-npm run check      # build + tests + npm pack dry-run
-npm run deploy     # test → build → atomic deploy with rollback backup
+npm test           # test generated artifacts, credential handoff, i18n, metadata, and README contracts
+npm run check      # build + artifact tests + npm pack dry-run (prepack runs the full test suite)
 ```
 
-Install the checkout into a local profile directly:
+For packed-installation and real-browser checks against the supported release candidates:
 
 ```sh
-dsh plugin --profile web add .
+npx playwright install chromium
+npm run test:harness -- 0.2.1-rc.2
+npm run test:harness -- 0.2.1-rc.3
+```
+
+These checks use a disposable `DSH_HOME` and simulated GitHub responses, not your credentials or a real Copilot request. CI also covers `0.2.0-rc.2`. See [the development workflow](docs/WORKFLOW.md) for test options and branch, PR, and release rules.
+
+After all checks pass, optionally deploy into the local Web profile:
+
+```sh
+npm run deploy     # build → artifact tests → atomic deploy with rollback backup
+```
+
+This copies the release files and runtime dependencies without running `npm install`; it does not register a missing bundle in the profile. For an initial checkout installation, build first and use:
+
+```sh
+dsh plugin --profile web add . -w
 ```
 
 After Host changes restart DSH; after Client-only changes a hard refresh (`Ctrl+Shift+R`) is usually enough.
 
-## Rollback
+## Rollback a local deploy
 
-`npm run deploy` keeps a timestamped backup before each install. To roll back, stop DSH and restore the wanted backup:
+`npm run deploy` backs up an existing installation under `${DSH_HOME:-$HOME/.dsh}/plugin-backups/dsh-llm-github-copilot/` and keeps up to five backup directories. Directory names include the version and timestamp.
+
+Stop DSH, choose a backup, then replace the installed directory rather than copying into an existing one:
 
 ```sh
-cp -r ~/.dsh/plugin-backups/dsh-llm-github-copilot/<timestamp> \
-      ~/.dsh/profiles/web/node_modules/@lujianjun19/dsh-llm-github-copilot
+PLUGIN="${DSH_HOME:-$HOME/.dsh}/profiles/web/node_modules/@lujianjun19/dsh-llm-github-copilot"
+BACKUP="${DSH_HOME:-$HOME/.dsh}/plugin-backups/dsh-llm-github-copilot/<backup-directory>"
+# Replace <backup-directory> above before running these commands.
+test -d "$BACKUP" && mv "$PLUGIN" "${PLUGIN}.before-rollback-$(date +%Y%m%d%H%M%S)" && cp -a "$BACKUP" "$PLUGIN"
 dsh web
 ```
 
+This restores a local deploy's package files, not the profile manifest or lockfile. For an npm/GitHub-managed installation, install the desired release with `dsh plugin --profile web add …@X.Y.Z -w` instead.
+
 ## Troubleshooting
 
-**Model selector shows no GitHub Copilot group after restart**
-The plugin loaded in a previous process that didn't pick up the new package. Restart `dsh web`. The stored token is preserved; no need to sign in again.
+### Signed in, but no GitHub Copilot models appear
 
-**Models appear but Claude is missing**
-Your egress IP is restricted. Export `HTTPS_PROXY` pointing to a proxy that exits from an unrestricted region, then restart `dsh web`.
+Confirm `github-copilot` is configured under **Settings → Models** (see [Selecting a model](#selecting-a-model)). If the settings page itself is missing, check the installed version and bundle registration, then restart DSH and hard-refresh. Repeated sign-in does not add a provider.
 
-**`/copilot-login` times out or reports a network error**
-Transient network issue during device-code polling. Run `/copilot-login` again to get a fresh code (the old one is invalidated automatically).
+### A model is missing, or a visible model rejects requests
 
-**Signed in (`/copilot-status` shows authenticated), but the chat model selector shows no GitHub Copilot models at all**
-Signing in only publishes the credential; it does not add a model route by
-itself. Open **Settings → Models → Add provider** and add **`github-copilot`**
-from the catalog list (see [Selecting a model](#selecting-a-model)). Until
-that provider is added, the harness's `llm-pi-ai` route stays dormant with an
-empty provider list and offers no models, even though sign-in succeeded.
+Check the Harness route's catalog/configuration, your account and organization model policies, and the actual request error. The picker is not a live entitlement check. This plugin cannot extend the catalog or diagnose every missing model as an IP restriction.
 
-**`configurable provider "github-copilot" is already declared`**
-This plugin registers no provider of its own — it publishes a credential for the harness's `github-copilot` provider. If no models appear, confirm you signed in (`/copilot-status`) and that the `github-copilot` provider is added under **Settings → Models**. Verify that your `cordis.patch.yml` uses `id: llm-github-copilot` and `name: '@lujianjun19/dsh-llm-github-copilot'`.
+### `/copilot-login` reports a network error or stays pending
 
-**Token expired**
-No action needed. The plugin stores the long-lived GitHub OAuth token and refreshes the short-lived Copilot API token automatically before it expires. Only an explicit sign-out or token revocation requires a new `/copilot-login`.
+Check access to GitHub. Device-flow requests honor `https_proxy`/`HTTPS_PROXY`/`http_proxy`/`HTTP_PROXY` (HTTP(S) proxy URLs) and hostname-based `no_proxy`/`NO_PROXY`. This transport applies only to this plugin's device flow, not the Harness route's model requests. Polling retries transient failures until the device code expires. While a flow is pending, `/copilot-login` reuses the same code; after expiry or denial, start sign-in again. Closing the dialog does not cancel Host polling.
+
+### Token exchange fails, or a token was revoked
+
+`/copilot-status` only checks that a token is stored. Short-lived Copilot token refresh is the Harness route's responsibility; a revoked or unusable long-lived GitHub token needs a new sign-in. Remove any ambient token as described above, sign out, then run `/copilot-login` again.
+
+### `configurable provider "github-copilot" is already declared`
+
+This plugin registers no model provider. Check for duplicate provider configuration, obsolete adapter registrations, or a manual plugin `insert` left alongside the bundle. Keep one plugin bundle registration and configure the built-in provider once.
+
+### Models remain in the picker after sign-out
+
+Removing the credential does not remove the provider configuration. Catalog visibility and credential-based filtering belong to the Harness route; see the [tracking issue](docs/issues/github-copilot-model-list-refresh.md).
 
 ## License
 

@@ -97,6 +97,9 @@
                 ]
               }),
               error === void 0 ? null : jsx("p", { role: "alert", style: css.error, children: error }),
+              status?.credentialRemaining
+                ? jsx("p", { role: "status", style: css.body, children: text("remainingCredentialHint", { credential: status.credential }) })
+                : null,
               pending
                 ? jsxs(React.Fragment, {
                     children: [
@@ -108,7 +111,7 @@
                   })
                 : null,
               !authenticated && !pending && status?.message ? jsx("p", { style: css.error, children: status.message }) : null,
-              authenticated
+              authenticated && !status?.credentialRemaining
                 ? jsxs(React.Fragment, {
                     children: [
                       jsx("p", { style: css.body, children: text("credential", { credential: status.credential ?? "GITHUB_COPILOT_OAUTH_TOKEN" }) }),
@@ -142,6 +145,7 @@
             description: text("logoutConfirmDescription"),
             acknowledgeLabel: text("logoutAcknowledge"),
             cancelLabel: text("cancel"),
+            closeLabel: text("close"),
             confirmLabel: text("logoutConfirm"),
             acknowledged,
             disabled: busy,

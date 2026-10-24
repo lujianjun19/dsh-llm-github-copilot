@@ -41,8 +41,13 @@ approval — that is the whole of what ADR-0002 decided.
 ## DeepSeek Harness version dependency
 
 - This plugin supports **`@deepseek-ai/dsh` `0.1.7-rc.1` through
-  `0.1.7-rc.2`, plus `0.2.0-rc.1` through `0.2.0-rc.2` (npm's `latest`/`next`)**, with
-  `@deepseek-ai/cordis` `^4.0.4`. See `peerDependencies` in `package.json`.
+  `0.1.7-rc.2`, `0.2.0-rc.1` through `0.2.0-rc.2`, and `0.2.1-rc.2`
+  through `0.2.1-rc.3`**, with `@deepseek-ai/cordis` `^4.0.4`.
+  Development dependencies/lockfile use `0.2.1-rc.3` and Cordis `^4.0.5`;
+  peer ranges retain the older lines and explicitly include `^0.2.1-rc.2`.
+  npm's moving dist-tags are not a support guarantee. Harness includes
+  prereleases in its own compatibility check; npm's default SemVer behavior
+  differs. See `docs/dsh-v0.2.1-rc.3-compatibility-analysis.md` for scope.
   The floor includes Loader-owned volatile configuration and the Web client's
   `credentials/reference-updated` event, which closes the device-flow dialog
   once the credential reference commits; earlier releases expose incompatible
@@ -122,6 +127,11 @@ npm run check
 git diff --stat
 git diff
 ```
+
+`npm run test:harness -- <exact-version>` additionally tests packed installation,
+full Web startup and Chromium interaction in a disposable `DSH_HOME`. CI runs it
+for `0.2.0-rc.2`, `0.2.1-rc.2`, and `0.2.1-rc.3`; GitHub responses are fixtures,
+not a real account authorization. See `docs/WORKFLOW.md` for prerequisites.
 
 ### Documentation sync check — required before every commit
 

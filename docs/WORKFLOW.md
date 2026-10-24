@@ -13,7 +13,10 @@ flowchart TD
         TEST --> FAIL{通过?}
         FAIL -- ❌ --> CODE
         FAIL -- ✅ --> CHECK["npm run check\n构建产物完整性校验"]
-        CHECK --> DOCSYNC["⭐ 文档同步检查\nrg 本次改变的事实：\n版本号 / API 签名 / 导出名\n事件名 / 限制 / 默认值"]
+        CHECK --> COMPAT{修改 Harness 兼容性、\n认证行为或 Client?}
+        COMPAT -- 是 --> SMOKE["npm run test:harness -- exact-version\n临时 DSH_HOME：打包安装 + Web 启动 + Chromium\nCI：0.2.0-rc.2 / 0.2.1-rc.2 / 0.2.1-rc.3"]
+        SMOKE --> DOCSYNC
+        COMPAT -- 否 --> DOCSYNC["⭐ 文档同步检查\nrg 本次改变的事实：\n版本号 / API 签名 / 导出名\n事件名 / 限制 / 默认值"]
         DOCSYNC --> DOCOK{文档均已同步?}
         DOCOK -- ❌ --> FIXDOC["同步更新文档\nREADME×2 / AGENTS / CONTEXT\ndocs/WORKFLOW / 视觉规格 / adr"]
         FIXDOC --> DOCSYNC
@@ -83,6 +86,34 @@ flowchart TD
     style CI fill:#f3e5f5,stroke:#9C27B0
     style POSTTEST fill:#e0f2f1,stroke:#009688
 ```
+
+## 兼容性与浏览器回归（EDIT / CI 门禁）
+
+修改 Harness 兼容性、认证行为或 Client 时，在基础构建/测试/check 之外执行：
+
+```sh
+npx playwright install chromium
+npm run test:harness -- 0.2.0-rc.2
+npm run test:harness -- 0.2.1-rc.2
+npm run test:harness -- 0.2.1-rc.3
+```
+
+需要 Node.js ≥ 24、PATH 中的 pnpm ≥ 9 和 Chromium；Linux CI 使用
+`npx playwright install --with-deps chromium` 安装系统依赖。
+`.github/workflows/ci.yml` 按这三个精确版本运行矩阵。
+
+脚本下载对应的完整 Harness（显式启用其 peer 安装），通过 `npm pack` 生成本地
+插件包，再用 `dsh plugin add` 装入独立的临时 `DSH_HOME`。随后验证 bundle、运行时依赖、
+配置树、实际 Web 启动、未认证 API 的 401、浏览器登录/退出和外部 token 残留提示。
+DeepSeek 首次账号引导在测试 profile 中关闭，避免它遮挡 Copilot 设置页。
+
+GitHub 端点由测试 fixture 返回设备码、等待和授权响应；不会访问真实 GitHub 授权端点，
+不会继承用户凭据，也不会发起 Copilot 推理请求。人工账号授权与真实推理应另行验证。
+这不是修改 Harness core；stub 只位于外部 GitHub HTTP 边界。
+
+可选环境变量：`DSH_TEST_INSTALL=/path/to/installation` 复用已有完整 Harness 安装，
+脚本会核对精确版本；`KEEP_HARNESS_TEST=1` 保留成功后的临时目录。失败时自动保留
+日志和浏览器截图，不更改用户的 profile。完成后停止测试进程；不要把 fixture 用于真实运行。
 
 ## 分支纪律（EDIT 阶段首步）
 

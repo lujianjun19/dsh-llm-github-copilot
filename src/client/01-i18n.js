@@ -1,5 +1,5 @@
-    // The Web API gateway owns the browser-facing /api prefix; the Host still
-    // registers these routes without it on ctx.webServer.
+    // The Host registers these literal /api paths through the authenticated
+    // ctx.connection.fetch channel, shared with the browser client.
     const API = "/api/github-copilot-auth";
     const NS = "github-copilot";
     const PLUGIN_VERSION = "__PLUGIN_VERSION__";
@@ -10,6 +10,8 @@
       signedIn: "Signed in",
       pending: "Waiting for GitHub authorization",
       signedOut: "Signed out",
+      credentialRemaining: "External token still present",
+      remainingCredentialHint: "No local Copilot grant is stored, but {credential} still supplies a token. Remove it from the launching environment, .env, or external credential source and restart DSH to finish signing out.",
       signIn: "Sign in to GitHub Copilot",
       requesting: "Requesting…",
       waiting: "Waiting for authorization…",
@@ -33,7 +35,7 @@
       logoutOption: "Sign out of GitHub Copilot",
       logoutOptionDetail: "Remove the GitHub OAuth credential stored on this device",
       logoutConfirmTitle: "Sign out of GitHub Copilot?",
-      logoutConfirmDescription: "This removes the OAuth credential stored on this device and immediately removes GitHub Copilot models from the model list. You can sign in again later.",
+      logoutConfirmDescription: "This removes the OAuth credential stored on this device. Provider configuration is kept; model-list visibility is managed by the Harness route. You can sign in again later.",
       logoutAcknowledge: "I understand and want to sign out of GitHub Copilot",
       cancel: "Cancel",
       logoutConfirm: "Sign out",
@@ -48,6 +50,8 @@
       signedIn: "已登录",
       pending: "等待 GitHub 授权",
       signedOut: "未登录",
+      credentialRemaining: "外部仍提供 token",
+      remainingCredentialHint: "本地未保存 Copilot grant，但 {credential} 仍提供 token。请从启动环境、.env 或外部凭据来源移除它，并重启 DSH 以完成退出。",
       signIn: "登录 GitHub Copilot",
       requesting: "正在请求…",
       waiting: "等待授权…",
@@ -71,7 +75,7 @@
       logoutOption: "退出 GitHub Copilot",
       logoutOptionDetail: "删除本机保存的 GitHub OAuth 凭据",
       logoutConfirmTitle: "确认退出 GitHub Copilot？",
-      logoutConfirmDescription: "退出后将删除本机保存的 OAuth 凭据，并立即从模型列表中移除 GitHub Copilot 模型。以后仍可重新登录。",
+      logoutConfirmDescription: "退出后将删除本机保存的 OAuth 凭据，保留提供方配置；模型列表的可见性由 Harness 路由管理。以后仍可重新登录。",
       logoutAcknowledge: "我确认要退出 GitHub Copilot",
       cancel: "取消",
       logoutConfirm: "退出登录",

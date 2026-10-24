@@ -4,9 +4,9 @@ const name = "llm-github-copilot";
 
 /**
  * No service inject. This plugin no longer registers an LLM adapter: it
- * provisions the credential the harness's own Copilot route consumes, and both
- * surfaces it touches (`credentials`, `commands`, `webServer`) are resolved
- * dynamically so a composition lacking them still loads.
+ * provisions the credential the harness's own Copilot route consumes. The
+ * services it touches (`credentials`, `commands`, `connection`, `settings`)
+ * are resolved dynamically so a composition lacking them still loads.
  */
 const inject = [];
 const NS = "llm-github-copilot";

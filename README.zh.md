@@ -4,210 +4,210 @@
 
 为 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 提供 GitHub Copilot 登录。
 
-使用 GitHub 账号登录后，即可在 DeepSeek Harness 中使用你的订阅所包含的全部 Copilot 模型——GPT-5 系列、Claude、Gemini 等。
-
-Harness 本身已经内置了一个 `github-copilot` 提供方，可以服务这些模型；它唯一做不到的是让你登录。本插件正是填补这个缺口：运行 GitHub 设备流，并发布该提供方用于认证的凭据。请求、模型发现、图片与流式处理全部由 Harness 的路由负责，不在本插件内。参见 [`docs/adr/0002-narrow-to-credential-provider.md`](docs/adr/0002-narrow-to-credential-provider.md)。
+本插件提供 GitHub OAuth 设备流登录页面和斜杠命令，并写入 Harness 内置 `github-copilot` 提供方使用的凭据。它**不注册 LLM 适配器**，也不维护模型目录：token 交换与刷新、模型可用性、请求、图片和流式处理均由 Harness 的 `@deepseek-ai/dsh-llm-pi-ai` 路由负责。可用模型取决于该路由的目录和账号权限，而不只取决于 Copilot 订阅。参见 [ADR-0002](docs/adr/0002-narrow-to-credential-provider.md)。
 
 ## 依赖要求
 
-- **DeepSeek Harness `0.1.7-rc.1` 至 `0.1.7-rc.2`，或 `0.2.0-rc.1` 至
-  `0.2.0-rc.2`（npm `latest`/`next`）**，且启用其自带的 `@deepseek-ai/dsh-llm-pi-ai`
-  路由（默认已挂载）。本插件写入的正是该路由读取的凭据。该基线使用由 Loader
-  持有的 volatile 配置，并会将凭据引用提交转发给 Web 客户端，因此设备流完成后
-  登录对话框会立即关闭。
-- 一个拥有 Copilot 订阅的 GitHub 账号。
-- Node.js ≥ 24。
+- **支持的 Harness 版本：** `0.1.7-rc.1` 至 `0.1.7-rc.2`、`0.2.0-rc.1` 至 `0.2.0-rc.2`，以及 `0.2.1-rc.2` 至 `0.2.1-rc.3`，搭配 `@deepseek-ai/cordis` `^4.0.4`。开发基线为 `0.2.1-rc.3`。
+- **声明的 Harness peer 范围：** `^0.1.7-rc.1 || ^0.2.0-rc.1 || ^0.2.1-rc.2`（见 [`package.json`](package.json)）。不能把 npm 持续变化的 `latest`/`next` 标签当成支持承诺。验证范围见 [0.2.1 兼容性评估](docs/dsh-v0.2.1-rc.3-compatibility-analysis.md)。
+- Harness 自带的 `@deepseek-ai/dsh-llm-pi-ai` 路由，以及 `dsh-credentials-local` 等凭据服务。默认 Web profile 已提供这些组件，自定义组合需自行挂载。
+- 一个有 Copilot 使用权限的 GitHub 账号。
+- Node.js ≥ 24；执行 `dsh plugin` 命令时，`PATH` 中须有 pnpm ≥ 9。
 
 ## 安装
+
+以下命令均针对 `web` profile。其默认目录是 `~/.dsh/profiles/web`；设置了 `DSH_HOME` 时则为 `$DSH_HOME/profiles/web`。
 
 ### 从 npm 安装（推荐）
 
 ```sh
-dsh plugin --profile web add @lujianjun19/dsh-llm-github-copilot
+dsh plugin --profile web add @lujianjun19/dsh-llm-github-copilot -w
 ```
 
 ### 从 GitHub 安装
 
 ```sh
-dsh plugin --profile web add github:lujianjun19/dsh-llm-github-copilot
+dsh plugin --profile web add github:lujianjun19/dsh-llm-github-copilot -w
 ```
 
-pnpm 10 及以上版本默认禁止 Git 依赖运行构建脚本。如果安装过程中提示需要批准构建，请将提示的包名加入该 profile 的 `pnpm-workspace.yaml`：
+这会安装仓库默认分支，可能包含尚未发布的变更。如果 pnpm 提示需要批准构建，请将**提示中的精确键名**加入 profile 的 `pnpm-workspace.yaml` 中的 `allowBuilds`，然后重新执行安装命令。不要根据仓库名猜测键名。
 
-```yaml
-allowBuilds:
-  dsh-llm-github-copilot: true
-```
+`dsh plugin` 会将本包注册到 profile 的 `dsh.profile.bundles`，并加载包内的 `cordis.patch.yml`。**不要再向 profile patch 添加本插件的 `insert` 条目。** 如果旧安装保留了手动注册，请在采用 bundle 安装时移除重复条目。
 
-然后重新执行安装命令。
-
-安装完成后，在 profile 的 `cordis.patch.yml` 中注册插件：
-
-```yaml
-- insert:
-    - id: llm-github-copilot
-      name: '@lujianjun19/dsh-llm-github-copilot'
-```
-
-重启 DSH 使插件生效：
+停止正在运行的实例，然后重新启动该 profile：
 
 ```sh
 dsh web
 ```
+
+更新插件的客户端 bundle 后，对已打开的浏览器标签页执行硬刷新。
 
 ## 更新
 
-DSH profile 内部使用 pnpm 管理依赖，其 lockfile 会锁定已安装的精确版本。单独重新运行 `dsh plugin add` 不一定能升级到最新版本。请使用以下任一命令（在任意目录执行均可）：
+通过 Harness 的包管理入口更新，以保持 profile 的 pnpm lockfile 和 bundle 列表同步：
 
 ```sh
-# 使用 npm（最简单，无需额外参数）
-npm install --prefix ~/.dsh/profiles/web @lujianjun19/dsh-llm-github-copilot@latest
-
-# 使用 pnpm
-pnpm add --dir ~/.dsh/profiles/web @lujianjun19/dsh-llm-github-copilot@latest --no-frozen-lockfile
+dsh plugin --profile web update @lujianjun19/dsh-llm-github-copilot --latest -w
 ```
 
-然后重启 DSH：
+如需指定版本，将 `X.Y.Z` 替换为目标版本号：
 
 ```sh
-dsh web
+dsh plugin --profile web add @lujianjun19/dsh-llm-github-copilot@X.Y.Z -w
 ```
 
-如需确认当前安装版本，在浏览器中打开 **设置 → GitHub Copilot**，版本号显示在页面底部。
+profile 的 pnpm `minimumReleaseAge` 策略可能延迟新版本的安装。如果实际安装版本偏旧，请检查该策略；确需放行时，仅将目标包和版本加入 `minimumReleaseAgeExclude`，再按精确版本安装。不要假设 `@latest` 一定选中了目标版本，也不要在 pnpm 管理的 profile 中混用 `npm install`。
+
+重启 DSH 并硬刷新浏览器。在 **设置 → GitHub Copilot** 页面底部确认安装版本，或执行：
+
+```sh
+dsh plugin --profile web list @lujianjun19/dsh-llm-github-copilot
+```
 
 ## 登录
 
-在 Harness 对话框中运行登录命令：
+打开 **设置 → GitHub Copilot** 并点击**登录**，也可以在 Harness 对话框中运行：
 
-```
+```text
 /copilot-login
 ```
 
-按照提示操作：在浏览器中打开验证链接，输入显示的设备码，并授权 GitHub App。授权完成后 token 会自动存储。运行 `/copilot-status` 可确认连接状态并查看可用模型列表。
+在浏览器中打开提示的 GitHub 验证链接，输入设备码，并授权 GitHub App（VS Code）。Host 会在后台持续轮询，授权完成后自动保存凭据。Web 登录界面会自动更新，聊天命令弹出的登录对话框会在检测到登录成功后关闭。
 
-退出登录：
+查看已保存的凭据状态：
 
+```text
+/copilot-status
 ```
+
+`authenticated` 仅表示存在长期 token，**不代表已通过实际 API 请求验证**。只有下游路由已记录 `availableModelIds` 时，该命令才报告模型**数量**；它不会请求或列出模型。路由首次交换 token 前，可能没有数量信息。
+
+删除本机凭据：
+
+```text
 /copilot-logout
 ```
 
-也可以直接通过环境变量设置 token（适用于 CI 或无界面场景）：
+Web 界面会要求确认。退出登录会删除 grant 和可写的 token 引用，但不会撤销 GitHub 上的授权，也不会删除已配置的模型提供方。如果只读引用或环境变量/`.env` fallback 仍提供 token，界面和命令会明确提示退出尚未完成，需要移除外部 token 并重启。此时状态 API 返回 `credentialRemaining: true`，不会返回 token 本身。
+
+### 使用已有 OAuth token
+
+可以用长期 GitHub OAuth token 代替设备流登录：
 
 ```sh
-export GITHUB_COPILOT_OAUTH_TOKEN=<your-github-oauth-token>
+export GITHUB_COPILOT_OAUTH_TOKEN='<your-github-oauth-token>'
+dsh web
 ```
 
-**支持的 token 类型：**
+凭据服务就绪后，插件**仅在 grant 尚不存在时**将该 token 写入 grant。已有 grant 的优先级高于环境变量或凭据引用。在将环境变量引用视为只读的 Harness 版本中，沿用过程只写入 grant，不尝试覆盖环境变量。
 
-| 前缀 | 来源 |
-|------|------|
-| `gho_` | OAuth token（`gh auth login` 默认产出） |
-| `github_pat_` | fine-grained PAT（需勾选 **Copilot** 权限） |
-| `ghu_` | GitHub App user token（VS Code 客户端产出） |
+应使用兼容 Copilot OAuth 流程取得的 token，而不是短期 Copilot API token。本插件不校验 token 前缀，也不保证任意 PAT 或 `gh auth login` 取得的 token 都有 Copilot 权限。
 
-`ghp_` 经典 PAT 不被 Copilot API 接受。
-
-## 功能
-
-**设备流登录** — 无需自行创建或粘贴 token。执行 `/copilot-login` 或使用设置页，在浏览器完成授权后凭据会自动保存。
-
-**自动刷新（由下游完成）** — 凭据中保存的是长期 GitHub token。Harness 路由会自行交换出短期 Copilot token、自动续期，并推导出你账户对应的 API 端点（个人 / 企业 / Enterprise）。
-
-**沿用已有 token** — 如果环境中已导出 `GITHUB_COPILOT_OAUTH_TOKEN`，或旧版本插件已保存过该凭据，启动时会自动沿用，无需二次登录。
-
-**设置页面** — Harness Web 设置界面中的 **GitHub Copilot** 专属页面（齿轮图标 → **GitHub Copilot**），可登录、查看状态、退出登录。模型在 **设置 → 模型** 中的 `github-copilot` 提供方下选择。
-
-**斜杠命令** — `/copilot-login`、`/copilot-status`、`/copilot-logout`，供没有设置界面的场景使用。
+使用环境变量 token 时，如需退出登录，请先从启动环境移除该变量，在没有它的环境中重启 DSH，再执行 `/copilot-logout`。否则旧版 Harness 会拒绝清除只读引用；新版虽可删除文件中的覆盖值，仍会回退到环境变量 token。后续启动时还可能被重新沿用。
 
 ## 选择模型
 
-登录只发布凭据，本身**不会**添加模型提供方。Harness 的 pi-ai 路由内置目录里
-包含 `github-copilot`，但该路由默认以“休眠”状态挂载——提供方列表为空——
-直到你手动添加一次：
+登录只发布凭据，**不会**添加提供方配置。
 
-1. 打开 **设置 → 模型**（这与本插件自己的 **设置 → GitHub Copilot** 登录页
-   是不同的页面）。
-2. 选择**添加提供方**，从内置目录列表中选 **`github-copilot`**。它是
-   pi-ai 自带的目录条目，不需要填写 endpoint 或 API key——本插件保存的
-   凭据已经覆盖这一步。
-3. 保存。Harness 会在该路由首次被使用或首次请求其目录时执行 Copilot
-   token 交换，并发现你账号可用的模型；这个过程可能需要几秒钟。
-4. 重新打开聊天输入框的模型选择器——GitHub Copilot 的模型这时才会出现。
+1. 打开 **设置 → 模型**，注意这与本插件的登录页面不同。
+2. 如果尚未配置，选择**添加提供方**，从内置目录选择 **`github-copilot`**。使用已保存的 grant 时，无需自定义 endpoint 或粘贴 API key。
+3. 保存后重新打开聊天输入框的模型选择器，在 `github-copilot` 下选择模型。
+4. 发起请求。Harness 路由会按需将长期 GitHub token 交换为短期 Copilot token、自动刷新，并推导账号对应的端点。
 
-在完成第 2 步之前，不论是否已登录，聊天输入框的模型选择器都**不会**
-出现任何 GitHub Copilot 模型；`/copilot-status` 显示 `authenticated`
-只代表凭据已保存，与是否添加了模型路由无关。
+在已验证的 Harness 基线上，模型选择器来自路由的配置目录。打开选择器**不代表**已经按账号动态发现模型或验证认证成功；退出登录后，目录条目也可能仍然可见。插件既不会过滤这些条目，也不会补充下游目录中没有的模型。参见[模型列表跟踪问题](docs/issues/github-copilot-model-list-refresh.md)。
 
-## 从 0.4.x 升级
-
-0.4.5 及更早版本会注册自己的 `github-copilot-official` 提供方，该提供方已不再存在。如果你的设置或历史会话引用了它，请改为 `github-copilot` 提供方——模型 id 完全相同。已保存的凭据会被自动沿用，无需重新登录。
+如果从旧适配器版本（截至 `0.4.5`）升级，请把设置和会话中已移除的 `github-copilot-official` 提供方改为 `github-copilot`，并选择当前目录中可用的模型。已有 token 引用会被自动沿用；只要 token 仍然有效，就无需再次登录。
 
 ## 配置
 
-本插件开箱即用。唯一的设置项是保存 GitHub OAuth token 的凭据引用：
+本插件无需配置即可使用。唯一选项 `oauthTokenEnv` 指定读取已有 token 的凭据引用/环境变量名，并在该引用可写时保存一份登录后的 token：
 
 ```yaml
 - id: llm-github-copilot
   config:
-    oauthTokenEnv: GITHUB_COPILOT_OAUTH_TOKEN   # 凭据引用 / 环境变量名
+    oauthTokenEnv: GITHUB_COPILOT_OAUTH_TOKEN
 ```
 
-与模型、端点、请求行为相关的配置全部位于 Harness 路由的 `llm-pi-ai` profile 条目，
-不在这里。Harness `0.1.7-rc.1` 及更高版本将实时设置保存到活动 profile 的
-`cordis.patch.yml`，而不再使用独立的 `settings.yaml` 设置段。
+将这段**覆盖配置**写入活动 profile 的 `cordis.patch.yml`，不要再添加 `insert`。实时设置使用该 profile patch，不使用单独的 `settings.yaml` 设置段。
+
+路由实际读取的 grant 始终位于 `llm-pi-ai/github-copilot`；修改 `oauthTokenEnv` 不会移动它，也不会创建第二个账号或提供方。模型、端点和请求行为均在 Harness 路由的 `llm-pi-ai` 条目下配置，不在本插件中。
 
 ## 开发
 
-需要 Node.js ≥ 24 和 npm。
+需要 Node.js ≥ 24 和 npm。在仓库根目录操作，修改 `src/host/` 和 `src/client/`，不要编辑生成的 `lib/` 文件。
 
 ```sh
-cd /path/to/dsh-llm-github-copilot
+npm ci
 npm run build      # 合并源码分片 → lib/index.js 和 lib/client.js
-npm test           # 构建 + 确定性产物、i18n、元数据测试
-npm run check      # 构建 + 测试 + npm pack 演练
-npm run deploy     # 测试 → 构建 → 原子部署，保留回滚备份
+npm test           # 测试生成产物、凭据交接、i18n、元数据和 README 契约
+npm run check      # 构建 + 产物测试 + npm pack 演练（prepack 会执行完整测试集）
 ```
 
-直接将当前 checkout 安装到本地 profile：
+针对所支持 RC 版本运行打包安装和真实浏览器检查：
 
 ```sh
-dsh plugin --profile web add .
+npx playwright install chromium
+npm run test:harness -- 0.2.1-rc.2
+npm run test:harness -- 0.2.1-rc.3
+```
+
+这些检查使用独立临时 `DSH_HOME` 和模拟 GitHub 响应，不使用你的凭据，也不发起真实 Copilot 请求。CI 还覆盖 `0.2.0-rc.2`。测试选项以及分支、PR、发布规则见[开发工作流](docs/WORKFLOW.md)。
+
+全部检查通过后，可选择部署到本地 Web profile：
+
+```sh
+npm run deploy     # 构建 → 产物测试 → 原子部署，保留回滚备份
+```
+
+该命令直接复制发布文件和运行时依赖，不执行 `npm install`，也不会替 profile 注册尚未存在的 bundle。首次安装当前 checkout 时，先构建，再执行：
+
+```sh
+dsh plugin --profile web add . -w
 ```
 
 修改 Host 代码后需重启 DSH；仅修改 Client 代码时，硬刷新（`Ctrl+Shift+R`）通常就足够了。
 
-## 回滚
+## 回滚本地部署
 
-`npm run deploy` 在每次安装前会保留带时间戳的备份。如需回滚，停止 DSH 后还原对应备份：
+`npm run deploy` 会将已有安装备份到 `${DSH_HOME:-$HOME/.dsh}/plugin-backups/dsh-llm-github-copilot/`，最多保留五份备份。目录名包含版本号和时间戳。
+
+停止 DSH，选定备份后替换安装目录，不要将备份复制到一个已存在的插件目录内部：
 
 ```sh
-cp -r ~/.dsh/plugin-backups/dsh-llm-github-copilot/<时间戳> \
-      ~/.dsh/profiles/web/node_modules/@lujianjun19/dsh-llm-github-copilot
+PLUGIN="${DSH_HOME:-$HOME/.dsh}/profiles/web/node_modules/@lujianjun19/dsh-llm-github-copilot"
+BACKUP="${DSH_HOME:-$HOME/.dsh}/plugin-backups/dsh-llm-github-copilot/<backup-directory>"
+# 执行以下命令前，先替换上面的 <backup-directory>。
+test -d "$BACKUP" && mv "$PLUGIN" "${PLUGIN}.before-rollback-$(date +%Y%m%d%H%M%S)" && cp -a "$BACKUP" "$PLUGIN"
 dsh web
 ```
 
+这只恢复本地部署的包文件，不恢复 profile manifest 或 lockfile。对于 npm/GitHub 管理的安装，应改用 `dsh plugin --profile web add …@X.Y.Z -w` 安装目标版本。
+
 ## 常见问题
 
-**重启后模型选择器中看不到 "GitHub Copilot"**
-几乎都是因为当前进程没有加载新插件。**重启 `dsh web`** 即可（token 已存好，无需重新登录）。
+### 已登录，但没有 GitHub Copilot 模型
 
-**能看到 Copilot 模型，但没有 Claude（或模型明显偏少）**
-出口 IP 被限制。GitHub 只对认可的出口返回完整目录（含 Claude）。插件自动读取 shell 中的 `HTTPS_PROXY` 等代理配置，设置好代理后重启 `dsh web` 即可。
+确认已在 **设置 → 模型** 中配置 `github-copilot`（见[选择模型](#选择模型)）。如果连插件设置页都没有，请检查安装版本和 bundle 注册，重启 DSH 并硬刷新。反复登录不会添加提供方。
 
-**`/copilot-login` 报网络错误或一直等待**
-设备码轮询偶发网络抖动；重新运行一次 `/copilot-login` 拿新口令即可（旧口令随之失效）。
+### 缺少某个模型，或可见模型无法请求
 
-**已登录（`/copilot-status` 显示 authenticated），但聊天模型选择器里完全没有 GitHub Copilot 模型**
-登录只发布凭据，本身不会添加模型路由。请打开 **设置 → 模型 → 添加提供方**，
-从内置目录列表中添加 **`github-copilot`**（见[选择模型](#选择模型)）。在添加
-之前，Harness 的 `llm-pi-ai` 路由会一直处于提供方列表为空的“休眠”状态，
-即使登录成功也不会提供任何模型。
+检查 Harness 路由的目录/配置、账号及组织的模型策略，以及实际请求错误。选择器不是实时权限校验。本插件无法扩展目录，也不能将所有模型缺失都归因于 IP 限制。
 
-**启动时报 `configurable provider "github-copilot" is already declared`**
-本插件不再注册自己的提供方——它只为 Harness 内置的 `github-copilot` 提供方发布凭据。如果看不到模型，请确认已登录（`/copilot-status`），并已在 **设置 → 模型** 中添加 `github-copilot` 提供方。同时确认 `cordis.patch.yml` 里的 `id`/`name` 与本文档一致。
+### `/copilot-login` 报网络错误或一直等待
 
-**token 过期了怎么办**
-不用管。底层保存的是长期有效的 GitHub OAuth token；短时效 Copilot token 由插件自动缓存并在过期前刷新。只有主动登出或吊销后才需要重新 `/copilot-login`。
+检查能否访问 GitHub。设备流请求读取 `https_proxy`/`HTTPS_PROXY`/`http_proxy`/`HTTP_PROXY`（HTTP(S) 代理 URL）以及按主机名匹配的 `no_proxy`/`NO_PROXY`。这只适用于本插件的设备流，不是 Harness 模型请求的代理配置。轮询会对临时失败持续重试，直到设备码过期。流程尚在等待时，重复执行 `/copilot-login` 会复用同一设备码；过期或拒绝后再重新发起登录。关闭对话框不会取消 Host 轮询。
+
+### token 交换失败，或 token 已被吊销
+
+`/copilot-status` 只检查 token 是否已保存。短期 Copilot token 由 Harness 路由刷新；长期 GitHub token 被吊销或不可用时，需要重新登录。先按上文移除环境变量 token，退出登录，再执行 `/copilot-login`。
+
+### 启动时报 `configurable provider "github-copilot" is already declared`
+
+本插件不注册模型提供方。请检查重复的提供方配置、旧适配器注册，以及 bundle 之外遗留的手动插件 `insert`。本插件只保留一份 bundle 注册，内置提供方也只配置一次。
+
+### 退出登录后模型仍出现在选择器中
+
+删除凭据不会删除提供方配置。目录可见性和基于凭据的过滤属于 Harness 路由，见[跟踪问题](docs/issues/github-copilot-model-list-refresh.md)。
 
 ## 许可证
 

@@ -201,7 +201,8 @@ function apply(ctx, config) {
   };
   const authStatus = async () => {
     const record = await readGrant();
-    const raw = grantToken(record) ?? await resolveRawOAuthToken();
+    const stored = grantToken(record);
+    const raw = stored ?? await resolveRawOAuthToken();
     if (raw === void 0) return {
       authenticated: false,
       credential: options().oauthTokenEnv,
@@ -216,17 +217,13 @@ function apply(ctx, config) {
       state: "authenticated",
       credential: options().oauthTokenEnv,
       provider: PI_AI_PROVIDER,
+      ...stored === void 0 ? { credentialRemaining: true } : {},
       ...modelIds === void 0 ? {} : { modelCount: modelIds.length }
     };
   };
   const beginLogin = async () => {
     const existing = await resolveRawOAuthToken();
-    if (existing !== void 0) return {
-      authenticated: true,
-      state: "authenticated",
-      credential: options().oauthTokenEnv,
-      provider: PI_AI_PROVIDER
-    };
+    if (existing !== void 0) return authStatus();
     if (authFlow?.state === "pending" && typeof authFlow.expiresAt === "number" && Date.now() < authFlow.expiresAt) {
       return { authenticated: false, ...publicFlow(authFlow) };
     }
@@ -241,11 +238,14 @@ function apply(ctx, config) {
     authGeneration += 1;
     clearAuthTimers();
     authFlow = { state: "signed-out" };
-    // Both stores are cleared: the grant the route authenticates from, and this
-    // plugin's own reference, which would otherwise be re-adopted on restart.
+    // Clear managed storage, never the launching environment. Older providers
+    // expose ambient references read-only; newer ones unset a file override but
+    // still fall back to the environment. Report the remaining token honestly.
     await credentials.deleteRecord(piAiRecordKey());
-    if ((await credentials.resolve(ref)) !== void 0) await credentials.unset(ref);
-    return { authenticated: false, state: "signed-out", credential: ref, provider: PI_AI_PROVIDER };
+    if ((await credentials.describe(ref)).writable && (await credentials.resolve(ref)) !== void 0) {
+      await credentials.unset(ref);
+    }
+    return authStatus();
   };
 
   // ── Web settings API (optional; only mounted by the web profile) ──────────
@@ -295,6 +295,8 @@ function apply(ctx, config) {
   });
 
   // ── slash commands (fallback for non-Web surfaces) ───────────────────────
+  const remainingCredentialNotice = (ref) => `${ref} still supplies a token outside the local grant.`
+    + " Remove it from the launching environment, .env, or external credential source and restart DSH to finish signing out.";
   ctx.inject(["commands"], (cctx) => {
     cctx.commands.register({
       name: "copilot-login",
@@ -302,6 +304,7 @@ function apply(ctx, config) {
       handler: async () => {
         try {
           const status = await beginLogin();
+          if (status.credentialRemaining) return { kind: "success", text: remainingCredentialNotice(status.credential) };
           if (status.authenticated) return {
             kind: "success",
             text: `GitHub Copilot is already authenticated. Run /copilot-status for details.`
@@ -329,6 +332,7 @@ function apply(ctx, config) {
       handler: async () => {
         try {
           const status = await authStatus();
+          if (status.credentialRemaining) return { kind: "success", text: remainingCredentialNotice(status.credential) };
           if (!status.authenticated) return {
             kind: "success",
             text: `GitHub Copilot is NOT signed in. Run /copilot-login to sign in, or set ${options().oauthTokenEnv}.`
@@ -358,9 +362,11 @@ function apply(ctx, config) {
           const status = await logout();
           return {
             kind: "success",
-            text: existing === void 0
-              ? "GitHub Copilot is not signed in. Nothing to do."
-              : `GitHub Copilot signed out; the "${status.provider}" credential has been removed.`
+            text: status.credentialRemaining
+              ? `Local GitHub Copilot grant removed, but ${remainingCredentialNotice(status.credential)}`
+              : existing === void 0
+                ? "GitHub Copilot is not signed in. Nothing to do."
+                : `GitHub Copilot signed out; the "${status.provider}" credential has been removed.`
           };
         } catch (error) {
           return { kind: "error", text: error instanceof Error ? error.message : String(error) };

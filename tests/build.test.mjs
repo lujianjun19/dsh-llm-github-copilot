@@ -74,19 +74,19 @@ test('manifest exposes both Host and Web client release faces', async () => {
     '@deepseek-ai/dsh-client-ui-settings-general',
   ]) assert.ok(manifest.dsh.client.inject.includes(dependency), dependency)
   assert.ok(!manifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-runtime'))
-  const peerRange = '^0.1.7-rc.1 || ^0.2.0-rc.1'
+  const peerRange = '^0.1.7-rc.1 || ^0.2.0-rc.1 || ^0.2.1-rc.2'
   for (const [dependency, range] of Object.entries(manifest.peerDependencies)) {
     if (!dependency.startsWith('@deepseek-ai/dsh-')) continue
     assert.equal(range, peerRange, dependency)
   }
   for (const [dependency, range] of Object.entries(manifest.devDependencies)) {
     if (!dependency.startsWith('@deepseek-ai/dsh-')) continue
-    assert.equal(range, '^0.2.0-rc.2', `${dependency} development range`)
+    assert.equal(range, '^0.2.1-rc.3', `${dependency} development range`)
   }
   assert.equal(manifest.peerDependencies['@deepseek-ai/cordis'], '^4.0.4')
-  assert.equal(manifest.devDependencies['@deepseek-ai/cordis'], '^4.0.4')
+  assert.equal(manifest.devDependencies['@deepseek-ai/cordis'], '^4.0.5')
   assert.equal(manifest.dependencies['@deepseek-ai/cosmokit'], '~1.8.5')
-  assert.equal(manifest.dependencies['@deepseek-ai/schemastery'], '^3.18.4')
+  assert.equal(manifest.dependencies['@deepseek-ai/schemastery'], '^3.18.5')
   const deploy = await readFile(join(root, 'scripts', 'deploy.mjs'), 'utf8')
   assert.match(deploy, /bundledDeps = \['undici', '@deepseek-ai\/cosmokit', '@deepseek-ai\/schemastery'\]/)
 })
