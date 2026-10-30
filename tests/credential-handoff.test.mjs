@@ -12,7 +12,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   Config, DEFAULT_OAUTH_TOKEN_ENV, PI_AI_PROVIDER, PI_AI_RECORD_SCOPE, apply,
-  grantModelIds, grantToken, piAiGrantRecord, piAiRecordKey, resolveAdapterOptions,
+  grantEnterpriseDomain, grantModelIds, grantToken, normalizeEnterpriseDomain,
+  piAiGrantRecord, piAiRecordKey, resolveAdapterOptions,
 } from '../lib/index.js'
 
 const TOKEN = 'ghu_' + 'x'.repeat(36)
@@ -230,4 +231,55 @@ test('an environment-supplied token is adopted into the grant without writing th
   assert.equal(credentials.calls.set, 0)
   assert.deepEqual(logs.warn, [])
   assert.equal(logs.info.length, 1)
+})
+
+// ── enterprise domain ──────────────────────────────────────────────────────────
+
+test('a fresh grant for an enterprise domain carries enterpriseUrl', () => {
+  const record = piAiGrantRecord(TOKEN, 'westpac.ghe.com')
+  assert.equal(record.kind, 'grant')
+  assert.equal(record.payload.enterpriseUrl, 'westpac.ghe.com')
+  assert.equal(record.payload.refresh, TOKEN)
+})
+
+test('enterprise domain survives a JSON round trip', () => {
+  const record = piAiGrantRecord(TOKEN, 'westpac.ghe.com')
+  assert.deepEqual(JSON.parse(JSON.stringify(record)), record)
+})
+
+test('grantEnterpriseDomain reads back the enterprise hostname', () => {
+  assert.equal(grantEnterpriseDomain(piAiGrantRecord(TOKEN, 'westpac.ghe.com')), 'westpac.ghe.com')
+  assert.equal(grantEnterpriseDomain(piAiGrantRecord(TOKEN)), undefined)
+  assert.equal(grantEnterpriseDomain(undefined), undefined)
+  assert.equal(grantEnterpriseDomain({ kind: 'grant', payload: { refresh: TOKEN } }), undefined)
+})
+
+test('grantEnterpriseDomain survives fields the consuming route adds on exchange', () => {
+  const exchanged = {
+    kind: 'grant',
+    payload: {
+      type: 'oauth', refresh: TOKEN, enterpriseUrl: 'westpac.ghe.com',
+      access: 'tid=abc;exp=123',
+      expires: 1788242805000,
+      availableModelIds: ['gpt-4.1'],
+    },
+  }
+  assert.equal(grantEnterpriseDomain(exchanged), 'westpac.ghe.com')
+})
+
+test('normalizeEnterpriseDomain accepts blank input as github.com', () => {
+  assert.equal(normalizeEnterpriseDomain(undefined), undefined)
+  assert.equal(normalizeEnterpriseDomain(''), undefined)
+  assert.equal(normalizeEnterpriseDomain('  '), undefined)
+})
+
+test('normalizeEnterpriseDomain normalises hostnames and URLs', () => {
+  assert.equal(normalizeEnterpriseDomain('westpac.ghe.com'), 'westpac.ghe.com')
+  assert.equal(normalizeEnterpriseDomain('https://westpac.ghe.com/'), 'westpac.ghe.com')
+  assert.equal(normalizeEnterpriseDomain('https://westpac.ghe.com/login'), 'westpac.ghe.com')
+})
+
+test('normalizeEnterpriseDomain rejects unparseable input', () => {
+  assert.equal(normalizeEnterpriseDomain('not a host'), null)
+  assert.equal(normalizeEnterpriseDomain('https://'), null)
 })

@@ -90,6 +90,14 @@ dsh plugin --profile web list @lujianjun19/dsh-llm-github-copilot
 
 Web 界面会要求确认。退出登录会删除 grant 和可写的 token 引用，但不会撤销 GitHub 上的授权，也不会删除已配置的模型提供方。如果只读引用或环境变量/`.env` fallback 仍提供 token，界面和命令会明确提示退出尚未完成，需要移除外部 token 并重启。此时状态 API 返回 `credentialRemaining: true`，不会返回 token 本身。
 
+### GitHub Enterprise
+
+针对 GitHub Enterprise 服务器，在登录命令后附带域名即可，例如 `/copilot-login company.ghe.com`。
+
+插件会将 URL 和裸主机名规范化（`https://company.ghe.com/some/path` 与 `company.ghe.com` 都归一为 `company.ghe.com`），设备流请求发往 `https://<域名>/login/device/code`，并把域名以 `enterpriseUrl` 存入凭据记录。Harness 路由读取该字段后，会在同一域名下（而非 github.com）进行 token 交换和端点寻址。空白域名（或省略参数）仍按 github.com 登录；无法解析的域名会直接报错，不会静默回退到 github.com。
+
+在 Web 界面中，登录页的 **GitHub Enterprise 域名**（可选）输入框会把同样的值以 `{ "enterpriseDomain": "company.ghe.com" }` 发送给登录接口。`/copilot-status` 会显示已保存的域名。
+
 ### 使用已有 OAuth token
 
 可以用长期 GitHub OAuth token 代替设备流登录：
