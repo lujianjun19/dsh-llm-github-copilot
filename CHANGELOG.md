@@ -2,6 +2,31 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
+## [0.4.12] - 2026-11-04
+
+### Changed
+
+- **DeepSeek Harness `0.2.1-rc.5` support.** The supported range now runs
+  through `0.2.1-rc.5`; development dependencies and the lockfile use
+  `0.2.1-rc.5`. Peer ranges already covered it and are unchanged. An upstream
+  review found no change to the credential handoff, credentials service,
+  Connection Fetch, command UI, or session APIs this plugin uses.
+- **Settings navigation icon uses the official slot when available.** Harness
+  `0.2.2` declares `settings.section.icon`; the plugin registers the Copilot
+  glyph there and suspends its DOM fallback first, restoring the shell's own
+  node so React never reconciles a node it did not render. Older shells keep
+  the DOM fallback.
+- CI adds `0.2.1-rc.5` and runs `0.2.2-alpha.3` as a non-blocking preview;
+  `npm run test:harness` accepts `0.2.2-alpha.N` previews. The `0.2.2` line is
+  not declared supported. The browser smoke test now asserts a single
+  navigation glyph rendered by the slot on `0.2.2` and by the fallback earlier.
+
+### Fixed
+
+- A client test stub keyed slot registrations by id alone, so a same-id
+  registration could replace the settings section and let the close-label
+  check pass without rendering it.
+
 ## [0.4.11] - 2026-10-24
 
 ### Fixed

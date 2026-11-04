@@ -210,9 +210,10 @@ base bundle 仍挂载 `dsh-authorization`，`llm-pi-ai` 也仍注册各 provider
 真实账号请求仅覆盖上述一个模型和这一版 Harness，不代表其他模型或 `0.2.1-rc.2` 也做过
 真实账号推理验证。没有记录 token 值，没有发布或推送 tag。
 
-## 追加：`0.2.1-rc.5` 与 `0.2.2-alpha.3` 复核（2026-11-03，未发布）
+## 追加：`0.2.1-rc.5` 与 `0.2.2-alpha.3` 复核（2026-11-04）
 
-> 本节是对上文快照的增补，不改写上文结论。分支：`chore/harness-0.2.1-rc5`。
+> 本节是对上文快照的增补，不改写上文结论。实现分支：`chore/harness-0.2.1-rc5`（PR #36），
+> 纳入 `v0.4.12`。
 
 核查时 npm `@deepseek-ai/dsh` 为 `latest = next = 0.2.1-rc.5`、`alpha = 0.2.2-alpha.3`。
 上游源码对比 `22ddee3` → master `8bd0733`（含 `dsh-v0.2.2-alpha.3`），另对比
