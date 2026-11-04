@@ -209,3 +209,28 @@ base bundle 仍挂载 `dsh-authorization`，`llm-pi-ai` 也仍注册各 provider
 这补齐了 `0.2.1-rc.3` 的真实设备流 → 凭据交接 → Copilot token 交换 → 推理 → 本地退出链路。
 真实账号请求仅覆盖上述一个模型和这一版 Harness，不代表其他模型或 `0.2.1-rc.2` 也做过
 真实账号推理验证。没有记录 token 值，没有发布或推送 tag。
+
+## 追加：`0.2.1-rc.5` 与 `0.2.2-alpha.3` 复核（2026-11-03，未发布）
+
+> 本节是对上文快照的增补，不改写上文结论。分支：`chore/harness-0.2.1-rc5`。
+
+核查时 npm `@deepseek-ai/dsh` 为 `latest = next = 0.2.1-rc.5`、`alpha = 0.2.2-alpha.3`。
+上游源码对比 `22ddee3` → master `8bd0733`（含 `dsh-v0.2.2-alpha.3`），另对比
+`dsh-v0.2.1-rc.3` → `dsh-v0.2.1-rc.5`。
+
+- **未发现必须修改的代码。** `llm-pi-ai` 的 `auth.ts` / `login.ts`、credentials /
+  credentials-local 源码、Connection Fetch、locale、ui-renderer、`commandUi` 服务均未变化；
+  `sessions.binding().command()` 与 `credentials/reference-updated` 转发保留。
+  `rc.3` → `rc.5` 只有界面与 ACP/MCP 日志修正，不触及本插件。
+- `0.2.2` 线（Cordis `4.0.6` alpha）中，`settings.configure()` 改以 `owner.ctx.fiber` 为键，
+  对本插件传入的插件 fiber 结果相同；`internal/config` 监听签名改变，本插件未使用；
+  `Modal` / `RiskConfirmation` 仅改外观，props 兼容。ADR-0002 的退出条件仍未满足：
+  `authorization.begin()` 仍只有 DeepSeek 账号使用。
+- `0.2.2` 新增 `settings.section.icon` 插槽。插件在插槽声明时注册 Copilot 图标，并先暂停
+  旧版 DOM 替换、还原 React 自己的节点；旧 shell 无此插槽时继续使用 DOM 回退。
+- 支持范围扩展到 `0.2.1-rc.5`，开发依赖/lockfile 基线改为 `0.2.1-rc.5`；peer 范围
+  `^0.2.1-rc.2` 已覆盖，不变。`0.2.2-alpha.3` 在 npm 默认 SemVer 下不匹配 peer 范围
+  （Harness 自身门禁会接受），因此只作为不阻塞的 CI 预览，不宣称支持。
+- `npm run test:harness` 在 `0.2.0-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.3`、`0.2.1-rc.5` 与
+  `0.2.2-alpha.3` 上均通过。新增导航图标检查：只有一个图标；`0.2.2` 必须由插槽渲染，
+  更早版本必须走 DOM 回退。未重复真实账号验收。

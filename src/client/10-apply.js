@@ -2,7 +2,8 @@
     function apply(ctx) {
       localeRuntime = ctx.locale;
       ctx.effect(() => ctx.locale.register(NS, { zh: ZH, en: EN }), "github-copilot: locale dictionaries");
-      ctx.effect(installSettingsNavIcon, "github-copilot: Settings navigation icon");
+      const legacyNavIcon = createLegacySettingsNavIcon();
+      ctx.effect(legacyNavIcon.install, "github-copilot: legacy Settings navigation icon");
       ctx.on("command/executed", (_sessionId, commandName, result) => {
         showLoginResult(commandName, result);
       });
@@ -55,6 +56,19 @@
         locale: NS,
         label: () => text("nav")
       }, GitHubCopilotSettings));
+      ctx.slots.inject("settings.section.icon", () => {
+        const resume = legacyNavIcon.suspend();
+        try {
+          const unregister = ctx.slots.register({
+            name: "settings.section.icon",
+            id: "github-copilot"
+          }, CopilotNavIcon);
+          return () => { unregister(); resume(); };
+        } catch (error) {
+          resume();
+          throw error;
+        }
+      });
     }
 
     exports.apply = apply;
