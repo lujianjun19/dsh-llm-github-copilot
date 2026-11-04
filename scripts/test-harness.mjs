@@ -10,8 +10,10 @@ import { checkHarnessBrowser } from '../tests/helpers/harness-browser.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-const version = process.argv[2] ?? '0.2.1-rc.3'
-assert.match(version, /^0\.(?:1\.7|2\.[01])-rc\.\d+$/, 'pass an exact supported Harness RC')
+const version = process.argv[2] ?? '0.2.1-rc.5'
+// Supported RCs, plus 0.2.2 alpha previews that exercise newer Harness surfaces
+// (such as settings.section.icon) without declaring support for that line.
+assert.match(version, /^0\.(?:(?:1\.7|2\.[01])-rc|2\.2-alpha)\.\d+$/, 'pass an exact supported Harness RC or a 0.2.2 alpha preview')
 const work = await mkdtemp(join(tmpdir(), `copilot-harness-${version}-`))
 const install = process.env.DSH_TEST_INSTALL ? resolve(process.env.DSH_TEST_INSTALL) : join(work, 'installation')
 const home = join(work, 'home')
@@ -101,7 +103,8 @@ try {
     const url = await startServer(cli, ambient)
     const unauthenticated = await fetch(`${new URL(url).origin}/api/github-copilot-auth/status`)
     assert.equal(unauthenticated.status, 401, 'the shared API must enforce browser-session authentication')
-    await checkHarnessBrowser(url, { ambient, artifacts: work })
+    // Harness 0.2.2 declares settings.section.icon; earlier shells use the DOM fallback.
+    await checkHarnessBrowser(url, { ambient, artifacts: work, iconSlot: version.startsWith('0.2.2-') })
     console.log(`${version}: ${ambient ? 'ambient-token sign-out warning' : 'fixture device flow and sign-out'} PASS`)
   }
   success = true

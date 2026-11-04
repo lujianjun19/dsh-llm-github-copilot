@@ -8,7 +8,7 @@
 
 ## 依赖要求
 
-- **支持的 Harness 版本：** `0.1.7-rc.1` 至 `0.1.7-rc.2`、`0.2.0-rc.1` 至 `0.2.0-rc.2`，以及 `0.2.1-rc.2` 至 `0.2.1-rc.3`，搭配 `@deepseek-ai/cordis` `^4.0.4`。开发基线为 `0.2.1-rc.3`。
+- **支持的 Harness 版本：** `0.1.7-rc.1` 至 `0.1.7-rc.2`、`0.2.0-rc.1` 至 `0.2.0-rc.2`，以及 `0.2.1-rc.2` 至 `0.2.1-rc.5`，搭配 `@deepseek-ai/cordis` `^4.0.4`。开发基线为 `0.2.1-rc.5`。尚不支持 `0.2.2` alpha 线；`0.2.2-alpha.3` 仅作为不阻塞的 CI 预览运行。
 - **声明的 Harness peer 范围：** `^0.1.7-rc.1 || ^0.2.0-rc.1 || ^0.2.1-rc.2`（见 [`package.json`](package.json)）。不能把 npm 持续变化的 `latest`/`next` 标签当成支持承诺。验证范围见 [0.2.1 兼容性评估](docs/dsh-v0.2.1-rc.3-compatibility-analysis.md)。
 - Harness 自带的 `@deepseek-ai/dsh-llm-pi-ai` 路由，以及 `dsh-credentials-local` 等凭据服务。默认 Web profile 已提供这些组件，自定义组合需自行挂载。
 - 一个有 Copilot 使用权限的 GitHub 账号。
@@ -148,10 +148,10 @@ npm run check      # 构建 + 产物测试 + npm pack 演练（prepack 会执行
 ```sh
 npx playwright install chromium
 npm run test:harness -- 0.2.1-rc.2
-npm run test:harness -- 0.2.1-rc.3
+npm run test:harness -- 0.2.1-rc.5
 ```
 
-这些检查使用独立临时 `DSH_HOME` 和模拟 GitHub 响应，不使用你的凭据，也不发起真实 Copilot 请求。CI 还覆盖 `0.2.0-rc.2`。测试选项以及分支、PR、发布规则见[开发工作流](docs/WORKFLOW.md)。
+这些检查使用独立临时 `DSH_HOME` 和模拟 GitHub 响应，不使用你的凭据，也不发起真实 Copilot 请求。CI 还覆盖 `0.2.0-rc.2` 和 `0.2.1-rc.3`，并以不阻塞的预览方式运行 `0.2.2-alpha.3`。测试选项以及分支、PR、发布规则见[开发工作流](docs/WORKFLOW.md)。
 
 全部检查通过后，可选择部署到本地 Web profile：
 

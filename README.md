@@ -8,7 +8,7 @@ This plugin provides a GitHub OAuth device-flow page and slash commands, then wr
 
 ## Requirements
 
-- **Supported Harness releases:** `0.1.7-rc.1` through `0.1.7-rc.2`, `0.2.0-rc.1` through `0.2.0-rc.2`, and `0.2.1-rc.2` through `0.2.1-rc.3`, with `@deepseek-ai/cordis` `^4.0.4`. The development baseline is `0.2.1-rc.3`.
+- **Supported Harness releases:** `0.1.7-rc.1` through `0.1.7-rc.2`, `0.2.0-rc.1` through `0.2.0-rc.2`, and `0.2.1-rc.2` through `0.2.1-rc.5`, with `@deepseek-ai/cordis` `^4.0.4`. The development baseline is `0.2.1-rc.5`. The `0.2.2` alpha line is not supported yet; `0.2.2-alpha.3` runs only as a non-blocking CI preview.
 - **Declared Harness peer range:** `^0.1.7-rc.1 || ^0.2.0-rc.1 || ^0.2.1-rc.2` (see [`package.json`](package.json)). npm's moving `latest`/`next` tags are not a support guarantee. See the [0.2.1 compatibility assessment](docs/dsh-v0.2.1-rc.3-compatibility-analysis.md) for validation scope.
 - The Harness's bundled `@deepseek-ai/dsh-llm-pi-ai` route and a credentials service such as `dsh-credentials-local`. The default Web profile supplies these; custom compositions must mount them.
 - A GitHub account with access to Copilot.
@@ -148,10 +148,10 @@ For packed-installation and real-browser checks against the supported release ca
 ```sh
 npx playwright install chromium
 npm run test:harness -- 0.2.1-rc.2
-npm run test:harness -- 0.2.1-rc.3
+npm run test:harness -- 0.2.1-rc.5
 ```
 
-These checks use a disposable `DSH_HOME` and simulated GitHub responses, not your credentials or a real Copilot request. CI also covers `0.2.0-rc.2`. See [the development workflow](docs/WORKFLOW.md) for test options and branch, PR, and release rules.
+These checks use a disposable `DSH_HOME` and simulated GitHub responses, not your credentials or a real Copilot request. CI also covers `0.2.0-rc.2` and `0.2.1-rc.3`, plus `0.2.2-alpha.3` as a non-blocking preview. See [the development workflow](docs/WORKFLOW.md) for test options and branch, PR, and release rules.
 
 After all checks pass, optionally deploy into the local Web profile:
 

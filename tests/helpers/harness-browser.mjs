@@ -30,6 +30,19 @@ async function openSettings(page, url) {
   await page.getByRole('button', { name: 'GitHub Copilot', exact: true }).click()
 }
 
+/**
+ * The navigation row shows exactly one Copilot glyph. Shells that declare
+ * settings.section.icon render it inside the slot; older shells get the DOM
+ * fallback. Selecting the row re-renders it, so this also covers that path.
+ */
+async function checkNavIcon(page, iconSlot) {
+  const row = page.getByRole('button', { name: 'GitHub Copilot', exact: true })
+  await row.locator('svg[data-github-copilot-icon="true"]').waitFor()
+  assert.equal(await row.locator('svg').count(), 1, 'one navigation glyph')
+  const slotted = await row.locator('[data-slot="settings.section.icon"] svg[data-github-copilot-icon="true"]').count()
+  assert.equal(slotted, iconSlot ? 1 : 0, iconSlot ? 'glyph rendered by the icon slot' : 'DOM fallback without an icon slot')
+}
+
 async function signOut(page) {
   await page.getByRole('button', { name: 'Sign out', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Sign out of GitHub Copilot?', exact: true })
@@ -43,7 +56,7 @@ async function signOut(page) {
 }
 
 /** Real browser + shipped Harness services; only GitHub responses are fixtures. */
-export async function checkHarnessBrowser(url, { ambient, artifacts }) {
+export async function checkHarnessBrowser(url, { ambient, artifacts, iconSlot }) {
   const browser = await chromium.launch({ headless: true })
   const errors = []
   let page
@@ -51,6 +64,7 @@ export async function checkHarnessBrowser(url, { ambient, artifacts }) {
     page = await browser.newPage({ locale: 'en-US' })
     page.on('pageerror', error => errors.push(error.message))
     await openSettings(page, url)
+    await checkNavIcon(page, iconSlot)
     if (ambient) {
       await page.getByRole('button', { name: 'Sign out', exact: true }).waitFor()
       assert.equal((await api(page, 'status')).authenticated, true)

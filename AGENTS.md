@@ -42,9 +42,13 @@ approval — that is the whole of what ADR-0002 decided.
 
 - This plugin supports **`@deepseek-ai/dsh` `0.1.7-rc.1` through
   `0.1.7-rc.2`, `0.2.0-rc.1` through `0.2.0-rc.2`, and `0.2.1-rc.2`
-  through `0.2.1-rc.3`**, with `@deepseek-ai/cordis` `^4.0.4`.
-  Development dependencies/lockfile use `0.2.1-rc.3` and Cordis `^4.0.5`;
+  through `0.2.1-rc.5`**, with `@deepseek-ai/cordis` `^4.0.4`.
+  Development dependencies/lockfile use `0.2.1-rc.5` and Cordis `^4.0.5`;
   peer ranges retain the older lines and explicitly include `^0.2.1-rc.2`.
+  The `0.2.2` alpha line (Cordis `4.0.6` alpha) is **not** supported: npm's
+  default SemVer does not match it against these peer ranges. CI runs
+  `0.2.2-alpha.3` only as a non-blocking preview; add `^0.2.2-rc.1` once an
+  RC of that line passes the full harness test.
   npm's moving dist-tags are not a support guarantee. Harness includes
   prereleases in its own compatibility check; npm's default SemVer behavior
   differs. See `docs/dsh-v0.2.1-rc.3-compatibility-analysis.md` for scope.
@@ -130,7 +134,8 @@ git diff
 
 `npm run test:harness -- <exact-version>` additionally tests packed installation,
 full Web startup and Chromium interaction in a disposable `DSH_HOME`. CI runs it
-for `0.2.0-rc.2`, `0.2.1-rc.2`, and `0.2.1-rc.3`; GitHub responses are fixtures,
+for `0.2.0-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.3`, and `0.2.1-rc.5`, plus
+`0.2.2-alpha.3` as a non-blocking preview; GitHub responses are fixtures,
 not a real account authorization. See `docs/WORKFLOW.md` for prerequisites.
 
 ### Documentation sync check — required before every commit
