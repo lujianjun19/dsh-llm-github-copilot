@@ -2,6 +2,34 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
+## [0.4.13] - 2026-11-11
+
+### Changed
+
+- **DeepSeek Harness `0.2.2-rc.1` support.** All DSH peer ranges explicitly
+  include `^0.2.2-rc.1` while retaining older supported lines. Development
+  dependencies and the lockfile use `0.2.2-rc.1` / Cordis `4.1.0`; runtime
+  utilities align with Cosmokit `1.9.0` and Schemastery `3.19.0`. Host/Client
+  logic and the credential handoff are unchanged.
+- CI replaces the non-blocking `0.2.2-alpha.3` preview with blocking
+  `0.2.2-rc.1` coverage. `test:harness` accepts the new RC line and defaults
+  to `0.2.2-rc.1`; alpha inputs remain available only for manual comparisons.
+- **Shorter bilingual READMEs.** Each quick start is reduced from 214 to
+  76 lines. Compatibility details, troubleshooting, proxies, old-version
+  migration, development, and rollback instructions move to the English
+  and Chinese user guides under `docs/`.
+- Documentation tests now cover both guides' shell examples and local links
+  and anchors, alongside README commands, configuration, and manifest checks
+  (41 tests total).
+
+### Verified
+
+- Packed installation and Chromium login/logout checks pass on
+  `0.2.0-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.3`, `0.2.1-rc.5`, and
+  `0.2.2-rc.1`; the minimum baseline `0.1.7-rc.1` also passes locally.
+  GitHub responses are fixtures; real account authorization and inference
+  were not repeated for this release.
+
 ## [0.4.12] - 2026-11-04
 
 ### Changed
