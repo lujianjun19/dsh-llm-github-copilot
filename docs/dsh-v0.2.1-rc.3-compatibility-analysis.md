@@ -235,3 +235,51 @@ base bundle 仍挂载 `dsh-authorization`，`llm-pi-ai` 也仍注册各 provider
 - `npm run test:harness` 在 `0.2.0-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.3`、`0.2.1-rc.5` 与
   `0.2.2-alpha.3` 上均通过。新增导航图标检查：只有一个图标；`0.2.2` 必须由插槽渲染，
   更早版本必须走 DOM 回退。未重复真实账号验收。
+
+## 追加：`0.2.2-rc.1` 支持与文档精简（2026-11-11，未发布）
+
+> 本节增补此前快照，不改写旧版本结论。实现分支：`chore/harness-0.2.2-rc1`；
+> 工作基于插件 `0.4.12`，尚未升版或发布。
+
+上游核查固定于本地 master `fcc0ad4621`，发行标签为 `dsh-v0.2.2-rc.1`
+（`66491b05e3`），并与 `dsh-v0.2.1-rc.5` 对比；端到端检查使用 npm 的精确版本
+`@deepseek-ai/dsh@0.2.2-rc.1`，不是直接启动源码树。
+
+### 调整与不变的边界
+
+- DSH peer 范围追加 `^0.2.2-rc.1`，保留所有旧版本分支。开发依赖/lockfile
+  升至 `0.2.2-rc.1` / Cordis `4.1.0`；运行时工具库对齐 Cosmokit `~1.9.0`
+  和 Schemastery `^3.19.0`。运行时依赖名称未变，deploy 的复制清单无需增加条目。
+- **SemVer 更正说明：旧范围不会必然被 Harness 启动门禁拒绝。** 对旧范围
+  `^0.1.7-rc.1 || ^0.2.0-rc.1 || ^0.2.1-rc.2`，`0.2.2-rc.1` 的 npm 默认
+  `semver.satisfies` 结果是 `false`，但 Harness 所用的
+  `{ includePrerelease: true }` 结果是 `true`。追加范围解决 npm 默认 peer
+  解析与支持声明，不能把前者不匹配误报成 Harness 自身不兼容。
+  Cordis `4.1.0` 已满足现有 peer `^4.0.4`，无须提高旧版的最低要求。
+- `scripts/test-harness.mjs` 默认改为 `0.2.2-rc.1`，允许 `0.2.2` RC 输入；
+  原正则在安装前即拒绝该版本。CI 用阻塞的 `0.2.2-rc.1` 替换非阻塞
+  `0.2.2-alpha.3`；alpha 输入仅保留供人工历史对比，不声明支持。
+- **Host/Client 源码及生成产物不变。** 上游 credentials、credentials-local、
+  authorization、`llm-pi-ai/auth.ts` 和 `login.ts` 源码在上述发行版间未变。
+  grant 仍位于 `llm-pi-ai/github-copilot`，现有写后回读校验继续保留。
+- Settings `configure()` 的 `owner.ctx.fiber` 键、受认证的 Connection Fetch、
+  `credentials/reference-updated`、`sessions.binding().session.command()`、命令 UI
+  和 `settings.section.icon` 都兼容现有用法。图标在新 RC 走正式插槽，旧版走 DOM 回退。
+- ADR-0002 的退出条件仍未满足：默认组合有 authorization 和原生 Copilot flow，
+  但生产代码的 `authorization.begin()` 调用仍只有 DeepSeek 账号专用入口，
+  没有可启动 Copilot flow 的通用 Web 消费界面。此次不新增 flow 或 LLM 适配器。
+  上游新图像计数限制、请求处理能力仍由消费方路由负责。
+- 中英文 README 从各 214 行精简为 76 行，保留快速安装、登录、模型启用、命令和
+  唯一配置项。兼容范围、代理/故障排查、旧版迁移、开发和回滚移至
+  `USER_GUIDE.md` / `USER_GUIDE.zh.md`。文档测试同时检查两语言示例、manifest
+  声明以及 README/指南本地链接和锚点，避免精简后丢失可操作路径。
+
+### 本地验证范围
+
+- `npm run build`、`npm test`（41 项）、`npm run check`。
+- `npm run test:harness -- <version>`：`0.2.0-rc.2`、`0.2.1-rc.2`、
+  `0.2.1-rc.3`、`0.2.1-rc.5`、`0.2.2-rc.1` 全部通过；另验证最低支持版本
+  `0.1.7-rc.1` 通过，确认工具库升级没有破坏该基线。
+- 覆盖打包安装、依赖解析、配置树、完整 Web 启动、未认证 API 401、导航图标、
+  模拟设备流登录、退出和外部 token 残留提示。所有运行使用临时 `DSH_HOME`，
+  不修改用户 profile。未重复真实 GitHub 账号授权或 Copilot 推理，也未运行远端 CI。

@@ -11,18 +11,13 @@ permissions:
 
 jobs:
   test:
-    name: Harness ${{ matrix.harness }}${{ matrix.preview && ' (preview)' || '' }}
+    name: Harness ${{ matrix.harness }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # Preview rows exercise unreleased Harness surfaces without gating the PR.
-    continue-on-error: ${{ matrix.preview == true }}
     strategy:
       fail-fast: false
       matrix:
-        harness: ['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.3', '0.2.1-rc.5']
-        include:
-          - harness: '0.2.2-alpha.3'
-            preview: true
+        harness: ['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.3', '0.2.1-rc.5', '0.2.2-rc.1']
 
     steps:
       - uses: actions/checkout@v4
