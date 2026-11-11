@@ -14,7 +14,7 @@ flowchart TD
         FAIL -- ❌ --> CODE
         FAIL -- ✅ --> CHECK["npm run check\n构建产物完整性校验"]
         CHECK --> COMPAT{修改 Harness 兼容性、\n认证行为或 Client?}
-        COMPAT -- 是 --> SMOKE["npm run test:harness -- exact-version\n临时 DSH_HOME：打包安装 + Web 启动 + Chromium\nCI：0.2.0-rc.2 / 0.2.1-rc.2 / 0.2.1-rc.3 / 0.2.1-rc.5\n预览（不阻塞）：0.2.2-alpha.3"]
+        COMPAT -- 是 --> SMOKE["npm run test:harness -- exact-version\n临时 DSH_HOME：打包安装 + Web 启动 + Chromium\nCI（均阻塞）：0.2.0-rc.2 / 0.2.1-rc.2 / 0.2.1-rc.3 / 0.2.1-rc.5 / 0.2.2-rc.1"]
         SMOKE --> DOCSYNC
         COMPAT -- 否 --> DOCSYNC["⭐ 文档同步检查\nrg 本次改变的事实：\n版本号 / API 签名 / 导出名\n事件名 / 限制 / 默认值"]
         DOCSYNC --> DOCOK{文档均已同步?}
@@ -97,14 +97,16 @@ npm run test:harness -- 0.2.0-rc.2
 npm run test:harness -- 0.2.1-rc.2
 npm run test:harness -- 0.2.1-rc.3
 npm run test:harness -- 0.2.1-rc.5
+npm run test:harness -- 0.2.2-rc.1
 ```
 
 需要 Node.js ≥ 24、PATH 中的 pnpm ≥ 9 和 Chromium；Linux CI 使用
 `npx playwright install --with-deps chromium` 安装系统依赖。
-`.github/workflows/ci.yml` 显式安装 pnpm 11，并按上述四个精确版本运行矩阵。
-另以 `continue-on-error` 预览运行 `0.2.2-alpha.3`：它覆盖新版设置导航图标插槽
-（`settings.section.icon`），失败不阻塞 PR，也不表示已支持 `0.2.2` 线。脚本只接受
-受支持的 RC 或 `0.2.2-alpha.N` 预览版本。
+`.github/workflows/ci.yml` 显式安装 pnpm 11，并按上述五个精确版本运行阻塞矩阵。
+`0.2.2-rc.1` 替代原来的非阻塞 alpha 预览，覆盖正式设置导航图标插槽
+（`settings.section.icon`）；旧版仍覆盖 DOM 回退。脚本默认版本为 `0.2.2-rc.1`，
+也接受这些 RC 版本线的精确版本及 `0.2.2-alpha.N`，后者仅用于人工历史对比，
+不再纳入 CI，也不声明支持。
 
 脚本下载对应的完整 Harness（显式启用其 peer 安装），通过 `npm pack` 生成本地
 插件包，再用 `dsh plugin add` 装入独立的临时 `DSH_HOME`。随后验证 bundle、运行时依赖、
@@ -158,7 +160,8 @@ rg -n '<changed-fact>' README.md README.zh.md AGENTS.md CONTEXT.md \
 
 | 文档 | 拥有 | 何时更新 |
 | --- | --- | --- |
-| `README.md` / `README.zh.md` | 用户可见的依赖、安装、配置 | 支持版本、选项、命令或行为变化。中英文必须同时改。 |
+| `README.md` / `README.zh.md` | 快速开始、登录、基本配置 | 支持版本、选项、命令或行为变化。中英文必须同时改。 |
+| `docs/USER_GUIDE.md` / `docs/USER_GUIDE.zh.md` | 兼容性详情、排查、本地部署与回滚 | 运维细节变化时与 README 同步；中英文命令示例保持一致。 |
 | `AGENTS.md` | agent 契约、工作流、版本依赖 | 规则、支持版本、强制模式或发布步骤变化。 |
 | `CONTEXT.md` | 领域术语 | 概念新增、改名，或边界移动。 |
 | `docs/WORKFLOW.md` | 开发周期图 | edit → release 周期的任何一步变化。 |

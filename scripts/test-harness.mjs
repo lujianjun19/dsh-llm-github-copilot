@@ -10,10 +10,10 @@ import { checkHarnessBrowser } from '../tests/helpers/harness-browser.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-const version = process.argv[2] ?? '0.2.1-rc.5'
-// Supported RCs, plus 0.2.2 alpha previews that exercise newer Harness surfaces
-// (such as settings.section.icon) without declaring support for that line.
-assert.match(version, /^0\.(?:(?:1\.7|2\.[01])-rc|2\.2-alpha)\.\d+$/, 'pass an exact supported Harness RC or a 0.2.2 alpha preview')
+const version = process.argv[2] ?? '0.2.2-rc.1'
+// RC test lines; accepting an exact version here is not a support guarantee.
+// Retain 0.2.2 alpha inputs for manual historical comparisons only.
+assert.match(version, /^0\.(?:(?:1\.7|2\.[012])-rc|2\.2-alpha)\.\d+$/, 'pass an exact Harness RC on a tested line or a 0.2.2 alpha preview')
 const work = await mkdtemp(join(tmpdir(), `copilot-harness-${version}-`))
 const install = process.env.DSH_TEST_INSTALL ? resolve(process.env.DSH_TEST_INSTALL) : join(work, 'installation')
 const home = join(work, 'home')
