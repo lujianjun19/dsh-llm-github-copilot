@@ -12,22 +12,31 @@ function apply(ctx, config) {
   let lastRaw;
   let lastGood;
   const options = () => {
-    const raw = config.oauthTokenEnv.get();
-    if (raw === lastRaw && lastGood !== void 0) return lastGood;
+    const rawEnterprise = config.enterpriseUrl?.get?.() ?? "";
+    const raw = {
+      oauthTokenEnv: config.oauthTokenEnv.get(),
+      enterpriseUrl: rawEnterprise.trim().length > 0
+        ? rawEnterprise
+        : launchEnvironmentOf(ctx).get(ENTERPRISE_URL_ENV)?.value ?? ""
+    };
+    const same = lastRaw !== void 0 && raw.oauthTokenEnv === lastRaw.oauthTokenEnv && raw.enterpriseUrl === lastRaw.enterpriseUrl;
+    if (same && lastGood !== void 0) return lastGood;
     try {
-      const next = resolveAdapterOptions({ oauthTokenEnv: raw });
+      const next = resolveAdapterOptions(raw);
       lastRaw = raw;
       lastGood = next;
       return next;
     } catch (error) {
       if (lastGood === void 0) throw error;
       lastRaw = raw;
-      ctx.logger.error(`${name}: keeping the last good configuration after an invalid credential reference`);
+      ctx.logger.error(`${name}: keeping the last good configuration after an invalid setting`);
       ctx.logger.error(error);
       return lastGood;
     }
   };
   options();
+  /** Human-readable name of the GitHub host sign-in targets. */
+  const githubHost = () => options().enterpriseDomain ?? GITHUB_DOTCOM;
 
   // ── credential plane ─────────────────────────────────────────────────────
   /**
@@ -70,13 +79,14 @@ function apply(ctx, config) {
    * reference read-only: Harness releases before 0.2.1 reject that `set`, and
    * the environment already resolves the reference, so the grant alone suffices.
    */
-  const storeRawOAuthToken = async (token) => {
+  const storeRawOAuthToken = async (token, enterpriseDomain = options().enterpriseDomain) => {
     const credentials = ctx.get("credentials");
     if (credentials === void 0) {
       throw new Error(`${name}: signing in needs the credentials service; mount dsh-credentials-local`);
     }
-    await credentials.modifyRecord(piAiRecordKey(), async () => piAiGrantRecord(token));
-    if (grantToken(await credentials.readRecord(piAiRecordKey())) !== token) {
+    await credentials.modifyRecord(piAiRecordKey(), async () => piAiGrantRecord(token, enterpriseDomain));
+    const written = await credentials.readRecord(piAiRecordKey());
+    if (grantToken(written) !== token || grantEnterpriseDomain(written) !== enterpriseDomain) {
       throw new Error(
         `${name}: the credential record at ${PI_AI_RECORD_SCOPE}/${PI_AI_PROVIDER} did not survive the write;`
         + " the consuming plugin may have changed its grant format",
@@ -174,10 +184,10 @@ function apply(ctx, config) {
       if (generation !== authGeneration) return;
       if (result.state === "done") {
         try {
-          await storeRawOAuthToken(result.token);
+          await storeRawOAuthToken(result.token, device.domain === GITHUB_DOTCOM ? void 0 : device.domain);
           finish("authenticated");
           ctx.logger.info(
-            `${name}: GitHub Copilot sign-in completed; the ${PI_AI_PROVIDER} route can now authenticate`,
+            `${name}: GitHub Copilot sign-in at ${device.domain} completed; the ${PI_AI_PROVIDER} route can now authenticate`,
           );
         } catch (error) {
           finish("error", error instanceof Error ? error.message : String(error));
@@ -207,16 +217,20 @@ function apply(ctx, config) {
       authenticated: false,
       credential: options().oauthTokenEnv,
       provider: PI_AI_PROVIDER,
+      githubHost: githubHost(),
       ...publicFlow(authFlow) ?? { state: "signed-out" }
     };
     // Model ids are read back from the record the consuming route maintains,
     // never interrogated here: this plugin owns no catalog.
     const modelIds = grantModelIds(record);
+    const grantHost = stored === void 0 ? githubHost() : grantEnterpriseDomain(record) ?? GITHUB_DOTCOM;
     return {
       authenticated: true,
       state: "authenticated",
       credential: options().oauthTokenEnv,
       provider: PI_AI_PROVIDER,
+      githubHost: grantHost,
+      ...grantHost === githubHost() ? {} : { configuredGithubHost: githubHost() },
       ...stored === void 0 ? { credentialRemaining: true } : {},
       ...modelIds === void 0 ? {} : { modelCount: modelIds.length }
     };
@@ -227,7 +241,7 @@ function apply(ctx, config) {
     if (authFlow?.state === "pending" && typeof authFlow.expiresAt === "number" && Date.now() < authFlow.expiresAt) {
       return { authenticated: false, ...publicFlow(authFlow) };
     }
-    const device = await startDeviceFlow();
+    const device = await startDeviceFlow(options().enterpriseDomain);
     schedulePoll(device);
     return { authenticated: false, ...publicFlow(authFlow) };
   };
@@ -312,7 +326,7 @@ function apply(ctx, config) {
           return {
             kind: "success",
             text: [
-              "GitHub Copilot sign-in",
+              `GitHub Copilot sign-in (${status.githubHost})`,
               `1. Open this URL in your browser: ${status.verificationUri}`,
               `2. Enter this code: ${status.userCode}`,
               "3. Authorize the GitHub App (VS Code) and complete sign-in.",
@@ -340,7 +354,10 @@ function apply(ctx, config) {
           return {
             kind: "success",
             text: [
-              `GitHub Copilot: authenticated.`,
+              `GitHub Copilot: authenticated at ${status.githubHost}.`,
+              ...status.configuredGithubHost === void 0 ? [] : [
+                `The configured host is now ${status.configuredGithubHost}; run /copilot-logout and /copilot-login to switch.`
+              ],
               `Credential published to the "${status.provider}" provider.`,
               status.modelCount === void 0
                 ? "Model list is populated by that provider on its first request."

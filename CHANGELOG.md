@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
+## [Unreleased]
+
+### Added
+
+- **GitHub Enterprise sign-in.** A new `enterpriseUrl` setting (fallback:
+  `GITHUB_COPILOT_ENTERPRISE_URL`) accepts a host such as
+  `https://bbraun.ghe.com/` or `bbraun.ghe.com`. The device flow runs against
+  that host, and the grant records it as pi-ai's `enterpriseUrl`, so the
+  Harness route exchanges and serves through the enterprise endpoints. Blank
+  keeps the github.com behaviour. `/copilot-status` and `/copilot-login`
+  name the host in use.
+
 ## [0.4.13] - 2026-11-11
 
 ### Changed

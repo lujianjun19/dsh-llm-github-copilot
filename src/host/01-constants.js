@@ -30,10 +30,29 @@ const PI_AI_PROVIDER = "github-copilot";
  */
 const DEFAULT_OAUTH_TOKEN_ENV = "GITHUB_COPILOT_OAUTH_TOKEN";
 
-/** GitHub OAuth device-flow endpoints (github.com). */
-const DEVICE_CODE_URL = "https://github.com/login/device/code";
-const ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token";
-const VERIFICATION_URI = "https://github.com/login/device";
+/**
+ * Ambient fallback for the GitHub host to sign in against, used when the
+ * `enterpriseUrl` setting is empty (`export GITHUB_COPILOT_ENTERPRISE_URL=company.ghe.com`).
+ */
+const ENTERPRISE_URL_ENV = "GITHUB_COPILOT_ENTERPRISE_URL";
+
+/** The public GitHub host, used when no enterprise host is configured. */
+const GITHUB_DOTCOM = "github.com";
+
+/**
+ * GitHub OAuth device-flow endpoints for a host. github.com and GitHub
+ * Enterprise Cloud with data residency (`<company>.ghe.com`) share the layout;
+ * the consuming pi-ai route derives the matching token-exchange and API hosts
+ * (`api.<host>`, `copilot-api.<host>`) from the grant's `enterpriseUrl`.
+ * @param {string} domain - bare hostname, e.g. `github.com` or `bbraun.ghe.com`.
+ */
+function deviceFlowUrls(domain) {
+  return {
+    deviceCodeUrl: `https://${domain}/login/device/code`,
+    accessTokenUrl: `https://${domain}/login/oauth/access_token`,
+    verificationUri: `https://${domain}/login/device`
+  };
+}
 
 /** VS Code's public GitHub App client id — produces ghu_* tokens that can be exchanged. */
 const OAUTH_CLIENT_ID = "Iv1.b507a08c87ecfe98";

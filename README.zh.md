@@ -68,6 +68,25 @@ dsh web
 
 实际使用的 grant 仍位于 `llm-pi-ai/github-copilot`；此选项不会创建第二个账号或提供方。[凭据详情](docs/USER_GUIDE.zh.md#凭据与配置)。
 
+### GitHub Enterprise（`<company>.ghe.com`）
+
+如需登录 GitHub Enterprise Cloud 主机而非 github.com，请将 `enterpriseUrl` 设置为主机 URL 或域名：
+
+```yaml
+- id: llm-github-copilot
+  config:
+    enterpriseUrl: https://bbraun.ghe.com/
+```
+
+该设置为空时，也可以使用环境变量：
+
+```sh
+export GITHUB_COPILOT_ENTERPRISE_URL=bbraun.ghe.com
+dsh web
+```
+
+设备码登录随后会打开 `https://<host>/login/device`，保存的 grant 会以 `enterpriseUrl` 记录该主机。Harness 路由读取该字段，在 `https://api.<host>/copilot_internal/v2/token` 交换 token，并向企业 Copilot 端点发送请求。更换主机后，请先执行 `/copilot-logout` 再执行 `/copilot-login`，因为一个主机签发的 token 在另一个主机上无效。`/copilot-status` 会显示当前 grant 所属的主机。
+
 ## 更多
 
 - [故障排查、代理与旧版迁移](docs/USER_GUIDE.zh.md#故障排查)

@@ -1,12 +1,38 @@
 //#region config resolution
 /**
- * Resolve the settings section into the one fact this plugin acts on.
+ * Normalize a GitHub Enterprise URL or bare domain to its hostname, the form
+ * pi-ai stores in a Copilot grant's `enterpriseUrl`. `https://bbraun.ghe.com/`
+ * and `bbraun.ghe.com` both become `bbraun.ghe.com`; `github.com` (or blank)
+ * means "no enterprise host".
+ * @param {unknown} input - the configured value.
+ * @returns {string | undefined} the hostname, or undefined for github.com/blank.
+ * @throws {Error} when the value is not a URL or hostname.
+ */
+function normalizeEnterpriseDomain(input) {
+  if (typeof input !== "string") return void 0;
+  const trimmed = input.trim();
+  if (trimmed.length === 0) return void 0;
+  let hostname;
+  try {
+    hostname = (trimmed.includes("://") ? new URL(trimmed) : new URL(`https://${trimmed}`)).hostname.toLowerCase();
+  } catch {
+    throw new Error(`${name}: invalid GitHub Enterprise URL/domain "${input}"`);
+  }
+  if (hostname.length === 0) throw new Error(`${name}: invalid GitHub Enterprise URL/domain "${input}"`);
+  return hostname === GITHUB_DOTCOM || hostname === `www.${GITHUB_DOTCOM}` ? void 0 : hostname;
+}
+
+/**
+ * Resolve the settings section into the facts this plugin acts on.
  * @param {object} config - the raw settings section.
- * @returns {{ oauthTokenEnv: string }} the resolved credential reference.
+ * @returns {{ oauthTokenEnv: string, enterpriseDomain?: string }} the resolved
+ *   credential reference, plus the enterprise host when one is configured.
  */
 function resolveAdapterOptions(config) {
+  const enterpriseDomain = normalizeEnterpriseDomain(config.enterpriseUrl);
   return {
-    oauthTokenEnv: credentialRef(config.oauthTokenEnv ?? DEFAULT_OAUTH_TOKEN_ENV)
+    oauthTokenEnv: credentialRef(config.oauthTokenEnv ?? DEFAULT_OAUTH_TOKEN_ENV),
+    ...enterpriseDomain === void 0 ? {} : { enterpriseDomain }
   };
 }
 
@@ -27,10 +53,33 @@ function piAiRecordKey() {
  * empty values is what tells it the grant is unexchanged.
  *
  * @param {string} token - the long-lived GitHub OAuth token.
+ * @param {string} [enterpriseDomain] - GitHub Enterprise host the token was
+ *   issued by. pi-ai reads it as `enterpriseUrl` to exchange the token at
+ *   `api.<host>` and to serve requests from `copilot-api.<host>`.
  * @returns {{ kind: 'grant', payload: object }}
  */
-function piAiGrantRecord(token) {
-  return { kind: "grant", payload: { type: "oauth", refresh: token, access: "", expires: 0 } };
+function piAiGrantRecord(token, enterpriseDomain) {
+  return {
+    kind: "grant",
+    payload: {
+      type: "oauth",
+      refresh: token,
+      access: "",
+      expires: 0,
+      ...enterpriseDomain === void 0 ? {} : { enterpriseUrl: enterpriseDomain }
+    }
+  };
+}
+
+/**
+ * The enterprise host a stored grant was issued by.
+ * @param {object | undefined} record - the stored credential record.
+ * @returns {string | undefined} the host, or undefined for github.com / any other shape.
+ */
+function grantEnterpriseDomain(record) {
+  if (record?.kind !== "grant") return void 0;
+  const value = record.payload?.enterpriseUrl;
+  return typeof value === "string" && value.length > 0 ? value : void 0;
 }
 
 /**

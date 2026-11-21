@@ -18,10 +18,15 @@ class CopilotAuthError extends Error {
   }
 }
 
-async function startDeviceFlow() {
+/**
+ * @param {string} [enterpriseDomain] - GitHub Enterprise host; github.com when absent.
+ */
+async function startDeviceFlow(enterpriseDomain) {
+  const domain = enterpriseDomain ?? GITHUB_DOTCOM;
+  const urls = deviceFlowUrls(domain);
   let response;
   try {
-    response = await copilotFetch(DEVICE_CODE_URL, {
+    response = await copilotFetch(urls.deviceCodeUrl, {
       method: "POST",
       headers: {
         accept: "application/json",
@@ -31,17 +36,18 @@ async function startDeviceFlow() {
       body: new URLSearchParams({ client_id: OAUTH_CLIENT_ID, scope: OAUTH_SCOPE }).toString()
     });
   } catch (error) {
-    throw new CopilotAuthError("failed to start GitHub device authorization", "TRANSPORT", { cause: error });
+    throw new CopilotAuthError(`failed to start GitHub device authorization at ${domain}`, "TRANSPORT", { cause: error });
   }
-  if (!response.ok) throw new CopilotAuthError(`GitHub device authorization failed (HTTP ${response.status})`, response.status >= 500 ? "SERVER" : "TRANSPORT", { status: response.status });
+  if (!response.ok) throw new CopilotAuthError(`GitHub device authorization at ${domain} failed (HTTP ${response.status})`, response.status >= 500 ? "SERVER" : "TRANSPORT", { status: response.status });
   const data = await response.json();
   const deviceCode = data.device_code;
   const userCode = data.user_code;
   if (typeof deviceCode !== "string" || deviceCode.length === 0 || typeof userCode !== "string" || userCode.length === 0) throw new CopilotAuthError("GitHub did not return a device code", "TRANSPORT");
   return {
+    domain,
     deviceCode,
     userCode,
-    verificationUri: typeof data.verification_uri === "string" && data.verification_uri.length > 0 ? data.verification_uri : VERIFICATION_URI,
+    verificationUri: typeof data.verification_uri === "string" && data.verification_uri.length > 0 ? data.verification_uri : urls.verificationUri,
     interval: Math.max(Number(data.interval) || 5, 1),
     expiresIn: Number(data.expires_in) || 900
   };
@@ -54,7 +60,7 @@ async function pollDeviceFlow(device) {
   }).toString();
   let response;
   try {
-    response = await copilotFetch(ACCESS_TOKEN_URL, {
+    response = await copilotFetch(deviceFlowUrls(device.domain ?? GITHUB_DOTCOM).accessTokenUrl, {
       method: "POST",
       headers: {
         accept: "application/json",

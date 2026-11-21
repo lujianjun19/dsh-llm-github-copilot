@@ -68,6 +68,25 @@ The only plugin option, `oauthTokenEnv`, changes the credential reference name. 
 
 The consuming grant remains at `llm-pi-ai/github-copilot`; this option does not create another account/provider. [Credential details](docs/USER_GUIDE.md#credentials-and-configuration).
 
+### GitHub Enterprise (`<company>.ghe.com`)
+
+To sign in against a GitHub Enterprise Cloud host instead of github.com, set `enterpriseUrl` to the host URL or bare domain:
+
+```yaml
+- id: llm-github-copilot
+  config:
+    enterpriseUrl: https://bbraun.ghe.com/
+```
+
+Or, when the setting is blank, use the environment:
+
+```sh
+export GITHUB_COPILOT_ENTERPRISE_URL=bbraun.ghe.com
+dsh web
+```
+
+The device flow then opens `https://<host>/login/device`, and the stored grant records the host as `enterpriseUrl`. The Harness route reads that field to exchange the token at `https://api.<host>/copilot_internal/v2/token` and send requests to the enterprise Copilot endpoint. After you change the host, run `/copilot-logout` and then `/copilot-login`, because a token issued by one host does not work on another. `/copilot-status` shows the host the current grant belongs to.
+
 ## More
 
 - [Troubleshooting, proxies, and old-version migration](docs/USER_GUIDE.md#troubleshooting)
