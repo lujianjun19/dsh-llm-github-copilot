@@ -6,7 +6,7 @@ GitHub Copilot sign-in for [DeepSeek Harness](https://github.com/deepseek-ai/dee
 
 ## Requirements
 
-- Harness `0.2.2-rc.1` (current development baseline); [older supported releases and compatibility details](docs/USER_GUIDE.md#compatibility).
+- Harness `0.2.2-rc.5` (current development baseline); [older supported releases and compatibility details](docs/USER_GUIDE.md#compatibility).
 - A GitHub account with Copilot access; Node.js ≥ 24 and pnpm ≥ 9 on `PATH`.
 - The default Web profile, or a custom composition with `@deepseek-ai/dsh-llm-pi-ai` and `dsh-credentials-local`.
 

@@ -42,16 +42,15 @@ approval — that is the whole of what ADR-0002 decided.
 
 - This plugin supports **`@deepseek-ai/dsh` `0.1.7-rc.1` through
   `0.1.7-rc.2`, `0.2.0-rc.1` through `0.2.0-rc.2`, `0.2.1-rc.2`
-  through `0.2.1-rc.5`, and `0.2.2-rc.1`**, with `@deepseek-ai/cordis` `^4.0.4`.
-  Development dependencies/lockfile use `0.2.2-rc.1` and Cordis `^4.1.0`;
-  runtime utilities use Cosmokit `~1.9.0` and Schemastery `^3.19.0`.
-  Peer ranges retain the older lines and explicitly include `^0.2.2-rc.1`.
-  Alpha releases remain unsupported. CI now gates on `0.2.2-rc.1` instead
-  of previewing `0.2.2-alpha.3`; the test script still accepts alpha inputs
-  for manual historical comparisons.
+  through `0.2.1-rc.5`, and `0.2.2-rc.1` through `0.2.2-rc.5`**, with
+  `@deepseek-ai/cordis` `^4.0.4`. Development dependencies/lockfile use
+  `0.2.2-rc.5` and Cordis `^4.1.0`; runtime utilities use Cosmokit `~1.9.0`
+  and Schemastery `^3.19.0`. Peer ranges retain the older lines and explicitly
+  include `^0.2.2-rc.1`. Alpha releases remain unsupported; the test script
+  accepts `0.2.2` alpha inputs only for manual historical comparisons.
   npm's moving dist-tags are not a support guarantee. Harness includes
   prereleases in its own compatibility check; npm's default SemVer behavior
-  differs. See `docs/dsh-v0.2.1-rc.3-compatibility-analysis.md` for scope.
+  differs. See `docs/dsh-v0.2.2-rc.5-compatibility-analysis.md` for scope.
   The floor includes Loader-owned volatile configuration and the Web client's
   `credentials/reference-updated` event, which closes the device-flow dialog
   once the credential reference commits; earlier releases expose incompatible
@@ -134,8 +133,8 @@ git diff
 
 `npm run test:harness -- <exact-version>` additionally tests packed installation,
 full Web startup and Chromium interaction in a disposable `DSH_HOME`. CI runs it
-for `0.2.0-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.3`, `0.2.1-rc.5`, and
-`0.2.2-rc.1`, all blocking; GitHub responses are fixtures, not a real
+for `0.2.0-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.3`, `0.2.1-rc.5`,
+`0.2.2-rc.1`, and `0.2.2-rc.5`, all blocking; GitHub responses are fixtures, not a real
 account authorization. See `docs/WORKFLOW.md` for prerequisites.
 
 ### Documentation sync check — required before every commit
