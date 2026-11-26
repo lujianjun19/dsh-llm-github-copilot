@@ -6,7 +6,7 @@
 
 ## 依赖要求
 
-- Harness `0.2.2-rc.1`（当前开发基线）；[旧版支持范围及兼容性说明](docs/USER_GUIDE.zh.md#兼容性)。
+- Harness `0.2.2-rc.5`（当前开发基线）；[旧版支持范围及兼容性说明](docs/USER_GUIDE.zh.md#兼容性)。
 - 一个有 Copilot 权限的 GitHub 账号；Node.js ≥ 24，`PATH` 中须有 pnpm ≥ 9。
 - 默认 Web profile，或包含 `@deepseek-ai/dsh-llm-pi-ai` 和 `dsh-credentials-local` 的自定义组合。
 

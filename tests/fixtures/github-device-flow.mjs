@@ -6,6 +6,7 @@ let polls = 0
 globalThis.fetch = async (input, init) => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
   if (url === 'https://github.com/login/device/code') {
+    polls = 0
     return Response.json({
       device_code: 'smoke-device-code', user_code: 'TEST-CODE',
       verification_uri: 'https://github.com/login/device', interval: 1, expires_in: 60,

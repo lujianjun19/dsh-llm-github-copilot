@@ -4,9 +4,9 @@
 
 ## 兼容性
 
-支持的 Harness 版本：`0.1.7-rc.1`–`0.1.7-rc.2`、`0.2.0-rc.1`–`0.2.0-rc.2`、`0.2.1-rc.2`–`0.2.1-rc.5`，以及 `0.2.2-rc.1`。不支持 alpha 版本；npm 持续变化的 dist-tag 不是支持承诺。
+支持的 Harness 版本：`0.1.7-rc.1`–`0.1.7-rc.2`、`0.2.0-rc.1`–`0.2.0-rc.2`、`0.2.1-rc.2`–`0.2.1-rc.5`，以及 `0.2.2-rc.1`–`0.2.2-rc.5`。不支持 alpha 版本；npm 持续变化的 dist-tag 不是支持承诺。
 
-[manifest](../package.json) 声明的 DSH peer 范围为 `^0.1.7-rc.1 || ^0.2.0-rc.1 || ^0.2.1-rc.2 || ^0.2.2-rc.1`，Cordis 为 `^4.0.4`。开发基线是 Harness `0.2.2-rc.1` / Cordis `4.1.0`。证据和验证边界见[兼容性评估](dsh-v0.2.1-rc.3-compatibility-analysis.md)。
+[manifest](../package.json) 声明的 DSH peer 范围为 `^0.1.7-rc.1 || ^0.2.0-rc.1 || ^0.2.1-rc.2 || ^0.2.2-rc.1`，Cordis 为 `^4.0.4`。开发基线是 Harness `0.2.2-rc.5` / Cordis `4.1.0`。证据和验证边界见[兼容性评估](dsh-v0.2.2-rc.5-compatibility-analysis.md)。
 
 ## 安装与更新
 
@@ -81,7 +81,7 @@ npm run build
 npm test
 npm run check
 npx playwright install chromium
-npm run test:harness -- 0.2.2-rc.1
+npm run test:harness -- 0.2.2-rc.5
 ```
 
 Harness 检查使用临时 `DSH_HOME`、打包安装、Chromium 和模拟 GitHub 响应，不使用你的凭据，也不发起真实 Copilot 推理。完整版本矩阵及测试选项见 [WORKFLOW.md](WORKFLOW.md)。

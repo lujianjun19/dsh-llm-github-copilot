@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented here. The project follows Semantic Versioning.
 
+## [0.4.14] - 2026-11-26
+
+### Changed
+
+- **DeepSeek Harness `0.2.2-rc.1`–`0.2.2-rc.5` support.** Development
+  dependencies and the lockfile use `0.2.2-rc.5`; the existing peer range
+  already covers this line. The credential handoff and runtime logic are
+  unchanged. `0.2.3-alpha.2` remains unsupported.
+- CI adds blocking `0.2.2-rc.5` coverage while retaining the existing
+  matrix. The Harness smoke test defaults to rc.5 and now covers the chat
+  commands, device-code overlay and logout confirmation as well as Settings.
+  The Web process and test workspace use a disposable home.
+
+### Verified
+
+- Packed installation and Chromium checks pass on `0.1.7-rc.1`,
+  `0.2.0-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.3`, `0.2.1-rc.5`, and each
+  `0.2.2-rc.1` through `0.2.2-rc.5`. GitHub responses are fixtures; real
+  account authorization and Copilot inference were not repeated.
+- On rc.5, `/copilot-status` completes in a new empty session but its result
+  was not visible on the empty-session page; the test checks the session
+  event rather than claiming a visible receipt.
+
 ## [0.4.13] - 2026-11-11
 
 ### Changed

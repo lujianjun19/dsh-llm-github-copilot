@@ -4,9 +4,9 @@
 
 ## Compatibility
 
-Supported Harness releases: `0.1.7-rc.1`–`0.1.7-rc.2`, `0.2.0-rc.1`–`0.2.0-rc.2`, `0.2.1-rc.2`–`0.2.1-rc.5`, and `0.2.2-rc.1`. Alpha releases are not supported; npm's moving dist-tags are not a support guarantee.
+Supported Harness releases: `0.1.7-rc.1`–`0.1.7-rc.2`, `0.2.0-rc.1`–`0.2.0-rc.2`, `0.2.1-rc.2`–`0.2.1-rc.5`, and `0.2.2-rc.1`–`0.2.2-rc.5`. Alpha releases are not supported; npm's moving dist-tags are not a support guarantee.
 
-The [manifest](../package.json) declares DSH peers as `^0.1.7-rc.1 || ^0.2.0-rc.1 || ^0.2.1-rc.2 || ^0.2.2-rc.1` and Cordis as `^4.0.4`. The development baseline is Harness `0.2.2-rc.1` / Cordis `4.1.0`. See the [compatibility assessment](dsh-v0.2.1-rc.3-compatibility-analysis.md) for evidence and validation limits.
+The [manifest](../package.json) declares DSH peers as `^0.1.7-rc.1 || ^0.2.0-rc.1 || ^0.2.1-rc.2 || ^0.2.2-rc.1` and Cordis as `^4.0.4`. The development baseline is Harness `0.2.2-rc.5` / Cordis `4.1.0`. See the [compatibility assessment](dsh-v0.2.2-rc.5-compatibility-analysis.md) for evidence and validation limits.
 
 ## Installation and updates
 
@@ -81,7 +81,7 @@ npm run build
 npm test
 npm run check
 npx playwright install chromium
-npm run test:harness -- 0.2.2-rc.1
+npm run test:harness -- 0.2.2-rc.5
 ```
 
 The Harness check uses a disposable `DSH_HOME`, packed installation, Chromium, and simulated GitHub responses. It neither uses your credentials nor makes a real Copilot inference request. The full version matrix and test options are in [WORKFLOW.md](WORKFLOW.md).

@@ -10,13 +10,15 @@ import { checkHarnessBrowser } from '../tests/helpers/harness-browser.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
-const version = process.argv[2] ?? '0.2.2-rc.1'
+const version = process.argv[2] ?? '0.2.2-rc.5'
 // RC test lines; accepting an exact version here is not a support guarantee.
 // Retain 0.2.2 alpha inputs for manual historical comparisons only.
 assert.match(version, /^0\.(?:(?:1\.7|2\.[012])-rc|2\.2-alpha)\.\d+$/, 'pass an exact Harness RC on a tested line or a 0.2.2 alpha preview')
 const work = await mkdtemp(join(tmpdir(), `copilot-harness-${version}-`))
 const install = process.env.DSH_TEST_INSTALL ? resolve(process.env.DSH_TEST_INSTALL) : join(work, 'installation')
 const home = join(work, 'home')
+const userHome = join(work, 'user-home')
+const workspace = join(work, 'workspace')
 // No user credentials or project .env are inherited into this disposable profile.
 const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => [
   'PATH', 'HOME', 'USER', 'LOGNAME', 'LANG', 'LC_ALL', 'TMPDIR', 'TMP', 'TEMP', 'SystemRoot',
@@ -55,6 +57,7 @@ async function startServer(cli, ambient) {
   const args = [cli, 'web', '--no-open', '--port', String(await port())]
   const serverEnv = {
     ...env,
+    HOME: userHome,
     NODE_OPTIONS: `--import=${pathToFileURL(join(root, 'tests/fixtures/github-device-flow.mjs')).href}`,
     ...(ambient ? { GITHUB_COPILOT_OAUTH_TOKEN: 'ghu_ambient_smoke_not_a_real_token' } : {}),
   }
@@ -74,6 +77,8 @@ async function startServer(cli, ambient) {
 }
 
 try {
+  await mkdir(userHome, { recursive: true })
+  await mkdir(workspace, { recursive: true })
   if (!process.env.DSH_TEST_INSTALL) {
     await mkdir(install, { recursive: true })
     await run('npm', ['install', '--prefix', install, '--ignore-scripts', '--legacy-peer-deps=false',
@@ -104,8 +109,8 @@ try {
     const unauthenticated = await fetch(`${new URL(url).origin}/api/github-copilot-auth/status`)
     assert.equal(unauthenticated.status, 401, 'the shared API must enforce browser-session authentication')
     // Harness 0.2.2 declares settings.section.icon; earlier shells use the DOM fallback.
-    await checkHarnessBrowser(url, { ambient, artifacts: work, iconSlot: version.startsWith('0.2.2-') })
-    console.log(`${version}: ${ambient ? 'ambient-token sign-out warning' : 'fixture device flow and sign-out'} PASS`)
+    await checkHarnessBrowser(url, { ambient, artifacts: work, workspace, iconSlot: version.startsWith('0.2.2-') })
+    console.log(`${version}: ${ambient ? 'ambient-token sign-out warning' : 'fixture settings and chat commands'} PASS`)
   }
   success = true
   console.log(`${version}: packed installation, configuration, dependencies, Host and browser checks PASS`)
